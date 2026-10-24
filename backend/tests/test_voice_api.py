@@ -44,17 +44,17 @@ def test_stt_endpoint_uses_sarvam_transcribe_and_returns_language(monkeypatch):
     monkeypatch.setattr(sarvam_client, "is_configured", lambda: True)
     seen = {}
 
-    def fake_transcribe(data, filename):
-        seen.update(data=data, filename=filename)
+    def fake_transcribe(data, filename, language_code):
+        seen.update(data=data, filename=filename, language_code=language_code)
         return sarvam_client.Transcription("नमस्ते", "hi-IN")
 
     monkeypatch.setattr(sarvam_client, "transcribe", fake_transcribe)
-    response = run_stt(voice.stt(FakeUpload(wav_bytes())))
+    response = run_stt(voice.stt(FakeUpload(wav_bytes()), "hi-IN"))
     assert response == {"transcript": "नमस्ते", "language_code": "hi-IN"}
-    assert seen["filename"] == "request.wav" and seen["data"].startswith(b"RIFF")
+    assert seen["filename"] == "request.wav" and seen["data"].startswith(b"RIFF") and seen["language_code"] == "hi-IN"
 
 
-def test_transcribe_uses_configured_mode_and_auto_language(monkeypatch):
+def test_transcribe_uses_configured_mode_and_explicit_language(monkeypatch):
     class Speech:
         def transcribe(self, **kwargs):
             seen.update(kwargs)
@@ -67,17 +67,32 @@ def test_transcribe_uses_configured_mode_and_auto_language(monkeypatch):
     seen = {}
     monkeypatch.setattr(sarvam_client, "_client", lambda: Client())
     monkeypatch.setattr(sarvam_client, "get_settings", lambda: SimpleNamespace(sarvam_stt_model="saaras:v4", sarvam_stt_mode="codemix", sarvam_timeout_s=6, sarvam_api_key=""))
-    result = sarvam_client.transcribe(wav_bytes(), "request.wav")
+    result = sarvam_client.transcribe(wav_bytes(), "request.wav", "hi-IN")
     assert str(result) == "पापा को दो दिन से bukhar है"
     assert result.language_code == "hi-IN"
-    assert seen["mode"] == "codemix" and seen["language_code"] == "unknown"
+    assert seen["mode"] == "codemix" and seen["language_code"] == "hi-IN"
+
+
+def test_transliterate_uses_sarvam_with_devanagari_target(monkeypatch):
+    from types import SimpleNamespace
+    seen = {}
+
+    class Text:
+        def transliterate(self, **kwargs):
+            seen.update(kwargs)
+            return SimpleNamespace(transliterated_text="मेरे सिर में दर्द है")
+
+    monkeypatch.setattr(sarvam_client, "_client", lambda: SimpleNamespace(text=Text()))
+    monkeypatch.setattr(sarvam_client, "_retry", lambda fn: (fn(), None))
+    assert sarvam_client.transliterate("ਮੇਰੇ ਸਿਰ ਦਰਦ ਹੈ", "pa-IN") == "मेरे सिर में दर्द है"
+    assert seen == {"input": "ਮੇਰੇ ਸਿਰ ਦਰਦ ਹੈ", "source_language_code": "pa-IN", "target_language_code": "hi-IN"}
 
 
 @pytest.mark.parametrize("transcript", ["पापा को दो दिन से बुखार है", "पापा को दो दिन से bukhar है"])
 def test_hindi_stt_transcripts_reach_pipeline_unchanged(monkeypatch, transcript):
     monkeypatch.setattr(sarvam_client, "is_configured", lambda: True)
-    monkeypatch.setattr(sarvam_client, "transcribe", lambda data, filename: sarvam_client.Transcription(transcript, "hi-IN"))
-    payload = run_stt(voice.stt(FakeUpload(wav_bytes())))
+    monkeypatch.setattr(sarvam_client, "transcribe", lambda data, filename, language_code: sarvam_client.Transcription(transcript, language_code))
+    payload = run_stt(voice.stt(FakeUpload(wav_bytes()), "hi-IN"))
     assert payload == {"transcript": transcript, "language_code": "hi-IN"}
     request = IntakeRequest(user_input=payload["transcript"], language=payload["language_code"], location=Location(lat=28.54, lng=77.27))
     prepared, language, _ = prepare(request)
@@ -89,14 +104,14 @@ def test_hindi_stt_transcripts_reach_pipeline_unchanged(monkeypatch, transcript)
 def test_stt_rejects_invalid_wav(monkeypatch):
     monkeypatch.setattr(sarvam_client, "is_configured", lambda: True)
     with pytest.raises(HTTPException) as err:
-        run_stt(voice.stt(FakeUpload(b"not wav")))
+        run_stt(voice.stt(FakeUpload(b"not wav"), "hi-IN"))
     assert err.value.status_code == 400
 
 
 def test_voice_endpoints_return_503_without_sarvam(monkeypatch):
     monkeypatch.setattr(sarvam_client, "is_configured", lambda: False)
     with pytest.raises(HTTPException) as stt_err:
-        run_stt(voice.stt(FakeUpload(wav_bytes())))
+        run_stt(voice.stt(FakeUpload(wav_bytes()), "hi-IN"))
     with pytest.raises(HTTPException) as tts_err:
         voice.tts(voice.TTSRequest(text="Hello", language="en-IN"))
     assert stt_err.value.status_code == 503 and tts_err.value.status_code == 503

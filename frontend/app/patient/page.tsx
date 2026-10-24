@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { API_BASE_URL } from "../../lib/api";
 
@@ -20,10 +20,15 @@ type AssistantResult = {
   suggestions: string[];
   care_context: CareContext | null;
   spoken_message?: string | null;
+  safety_net?: string | null;
+  why_not?: string | null;
 };
 type CareContext = { care_type: string; urgency: string; reasoning: string; symptoms: string[] };
 type VoiceLanguage = "hi-IN" | "en-IN";
 type AssistantLanguage = "Hindi" | "Hinglish" | "English";
+type AuthUser = { username: string; name: string; role: "patient" | "dispatch" | "provider"; caregiver_id: string | null };
+type Booking = { id: number; caregiver_id: string; slot: string; care_type: string; urgency: string; handoff_summary: string; state: string; proposed_slot: string | null };
+type CheckIn = { id: number; booking_id: number; state: string; answer: string | null };
 type Turn = { role: string; content: string; follow_up_question?: string; language?: VoiceLanguage; suggestions?: string[]; spoken_message?: string | null; care_context?: CareContext | null };
 
 const names: Record<string, string> = {
@@ -120,6 +125,30 @@ function formatTimer(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+function appointmentSlots(reason: string): { value: string; label: string }[] {
+  const window = reason.match(/free\s+(\d{2}:\d{2})[–-](\d{2}:\d{2})/i);
+  if (!window) return [];
+  const [startHour, startMinute] = window[1].split(":").map(Number);
+  const [endHour, endMinute] = window[2].split(":").map(Number);
+  const now = Date.now();
+  const slots: { value: string; label: string }[] = [];
+  const dateParts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const datePart = (type: string) => dateParts.find((part) => part.type === type)?.value || "";
+  const today = new Date(Date.UTC(Number(datePart("year")), Number(datePart("month")) - 1, Number(datePart("day"))));
+  const start = startHour * 60 + startMinute;
+  const end = endHour * 60 + endMinute;
+  for (let day = 0; day < 7; day += 1) {
+    const date = new Date(today.getTime() + day * 86_400_000).toISOString().slice(0, 10);
+    for (let minute = start; minute < end; minute += 30) {
+      const time = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+      const value = `${date}T${time}:00+05:30`;
+      if (new Date(value).getTime() <= now) continue;
+      slots.push({ value, label: `${date} · ${time} IST` });
+    }
+  }
+  return slots;
+}
+
 export default function PatientPage() {
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<Turn[]>([]);
@@ -129,6 +158,8 @@ export default function PatientPage() {
   const [careContext, setCareContext] = useState<CareContext | null>(null);
   const [showCaregivers, setShowCaregivers] = useState(false);
   const conversationEndRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
@@ -136,7 +167,20 @@ export default function PatientPage() {
   const [transcribing, setTranscribing] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [readAloud, setReadAloud] = useState(false);
-  const [hasUsedMic, setHasUsedMic] = useState(false);
+  const [voiceInputLanguage, setVoiceInputLanguage] = useState<VoiceLanguage>("hi-IN");
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(118);
+  const hasUsedMicRef = useRef(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [checkins, setCheckins] = useState<CheckIn[]>([]);
+  const [dispatchAlertBusy, setDispatchAlertBusy] = useState(false);
+  const [dispatchAlertMessage, setDispatchAlertMessage] = useState("");
+  const [dispatchAlertStatus, setDispatchAlertStatus] = useState("");
+  const [bookingCaregiver, setBookingCaregiver] = useState<string | null>(null);
+  const [bookingSlot, setBookingSlot] = useState("");
+  const [bookingBusy, setBookingBusy] = useState(false);
+  const [bookingError, setBookingError] = useState("");
   const readAloudRef = useRef(readAloud);
   const streamRef = useRef<MediaStream | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
@@ -151,6 +195,27 @@ export default function PatientPage() {
   const audioUrlRef = useRef<string | null>(null);
   const speechRequestRef = useRef(0);
   readAloudRef.current = readAloud;
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("carecompass_voice_language");
+      if (stored === "hi-IN" || stored === "en-IN") setVoiceInputLanguage(stored);
+    } catch { /* Keep Hindi as the default when browser storage is unavailable. */ }
+  }, []);
+
+  useEffect(() => {
+    const composer = composerRef.current;
+    if (!composer || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setComposerHeight(Math.ceil(composer.getBoundingClientRect().height)));
+    observer.observe(composer);
+    setComposerHeight(Math.ceil(composer.getBoundingClientRect().height));
+    return () => observer.disconnect();
+  }, []);
+
+  function chooseVoiceLanguage(language: VoiceLanguage) {
+    setVoiceInputLanguage(language);
+    try { localStorage.setItem("carecompass_voice_language", language); } catch { /* Storage is optional. */ }
+  }
 
   function stopSpeech() {
     speechRequestRef.current += 1;
@@ -224,6 +289,7 @@ export default function PatientPage() {
       const nextHistory = data.mode === "care" ? turns : [...turns, { role: "assistant", content: data.message, follow_up_question: data.mode === "followup" ? data.message : undefined, language: responseLanguage, suggestions: data.suggestions, spoken_message: data.spoken_message, care_context: data.care_context }];
       setHistory(nextHistory);
       setInput("");
+      if (inputRef.current) inputRef.current.style.height = "44px";
       setResult(data);
       setCareContext(data.care_context);
       setShowCaregivers(false);
@@ -258,8 +324,8 @@ export default function PatientPage() {
 
   async function startRecording() {
     stopSpeech();
-    if (!hasUsedMic) {
-      setHasUsedMic(true);
+    if (!hasUsedMicRef.current) {
+      hasUsedMicRef.current = true;
       setReadAloud(true);
     }
     setError("");
@@ -337,6 +403,7 @@ export default function PatientPage() {
     try {
       const form = new FormData();
       form.append("file", encodeWav(samples, rate), "recording.wav");
+      form.append("language_code", voiceInputLanguage);
       const response = await fetch(`${API_BASE_URL}/api/v1/voice/stt`, { method: "POST", body: form });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -346,7 +413,7 @@ export default function PatientPage() {
       const transcript = typeof payload.transcript === "string" ? payload.transcript.trim() : "";
       if (!transcript) throw new Error("No speech was detected. Please try again or type your request.");
       setInput(transcript);
-      await submitText(transcript, payload.language_code);
+      await submitText(transcript, payload.language_code || voiceInputLanguage);
     } catch (err) {
       setError(err instanceof Error ? `${err.message} You can type your request instead.` : "Voice transcription failed. You can type your request instead.");
     } finally {
@@ -375,67 +442,199 @@ export default function PatientPage() {
   }, []);
 
   useEffect(() => {
-    if (history.length) conversationEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [history, result]);
+    const refreshAuth = () => {
+      const token = localStorage.getItem("carecompass_token");
+      if (!token) { setAuthUser(null); return; }
+      fetch(`${API_BASE_URL}/api/v1/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error("expired")))
+        .then((user: AuthUser) => setAuthUser(user))
+        .catch(() => {
+          localStorage.removeItem("carecompass_token");
+          localStorage.removeItem("carecompass_user");
+          setAuthUser(null);
+        });
+    };
+    refreshAuth();
+    window.addEventListener("storage", refreshAuth);
+    return () => window.removeEventListener("storage", refreshAuth);
+  }, []);
+
+  useEffect(() => {
+    if (!authUser || authUser.role !== "patient") { setBookings([]); return; }
+    const token = localStorage.getItem("carecompass_token");
+    if (!token) return;
+    fetch(`${API_BASE_URL}/api/v1/bookings/mine`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Could not load bookings")))
+      .then((items: Booking[]) => setBookings(items))
+      .catch(() => setBookingError("Could not load your booking status. Refresh to try again."));
+    fetch(`${API_BASE_URL}/api/v1/checkins/mine`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.ok ? r.json() : []).then(setCheckins).catch(() => setCheckins([]));
+    fetch(`${API_BASE_URL}/api/v1/alerts/mine`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.ok ? r.json() : []).then((items: { status: string }[]) => { if (items[0]) setDispatchAlertStatus(items[0].status); }).catch(() => undefined);
+  }, [authUser]);
+
+  useEffect(() => {
+    if (!authUser) return;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let stopped = false;
+    let retry = 0;
+    const connect = () => {
+      if (stopped) return;
+      const token = localStorage.getItem("carecompass_token");
+      if (!token) return;
+      socket = new WebSocket(`${API_BASE_URL.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(token)}`);
+      socket.onopen = () => { retry = 0; };
+      socket.onmessage = (event) => {
+        try {
+          const update = JSON.parse(event.data);
+          if (update.booking && authUser.role === "patient") {
+            const booking = update.booking as Booking;
+            setBookings((current) => [booking, ...current.filter((item) => item.id !== booking.id)]);
+          }
+          if (update.alert && authUser.role === "patient") setDispatchAlertStatus(update.alert.status);
+          if (update.checkin?.emergency && authUser.role === "patient") setDispatchAlertMessage("Please call 112 now. You can also alert the demo dispatch desk.");
+        } catch { /* Ignore malformed updates and keep the live connection. */ }
+      };
+      socket.onclose = () => {
+        if (stopped) return;
+        const delay = Math.min(30_000, 500 * (2 ** Math.min(retry, 6)));
+        retry += 1;
+        reconnectTimer = window.setTimeout(connect, delay);
+      };
+    };
+    connect();
+    return () => {
+      stopped = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [authUser]);
+
+  function logout() {
+    localStorage.removeItem("carecompass_token");
+    localStorage.removeItem("carecompass_user");
+    setAuthUser(null);
+    setBookings([]);
+  }
+
+  function openBooking(caregiverId: string) {
+    setBookingError("");
+    setBookingSlot("");
+    if (!authUser || authUser.role !== "patient") {
+      setBookingCaregiver(caregiverId);
+      setBookingError("Sign in as a demo patient to request this booking. Your intake stays open in this tab.");
+      return;
+    }
+    setBookingCaregiver(caregiverId);
+  }
+
+  async function confirmBooking() {
+    if (!result?.care || !result.care_context || !bookingCaregiver || !bookingSlot) return;
+    const token = localStorage.getItem("carecompass_token");
+    if (!token) { setBookingError("Please sign in as a patient to request this booking."); return; }
+    setBookingBusy(true);
+    setBookingError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/bookings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ caregiver_id: bookingCaregiver, slot: bookingSlot, triage: result.care, care_context: result.care_context, history, patient_latitude: Number(lat), patient_longitude: Number(lng) }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Could not request this booking.");
+      setBookings((current) => [payload as Booking, ...current.filter((item) => item.id !== payload.id)]);
+      setBookingCaregiver(null);
+      setBookingSlot("");
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : "Could not request this booking.");
+    } finally {
+      setBookingBusy(false);
+    }
+  }
+
+  async function alertDispatch() {
+    const token = localStorage.getItem("carecompass_token");
+    if (!token) { setDispatchAlertMessage("Sign in as a patient to alert the demo dispatch desk."); return; }
+    setDispatchAlertBusy(true); setDispatchAlertMessage("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/alerts`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ latitude: Number(lat), longitude: Number(lng), red_flags: result?.care?.red_flags || [], summary: history.filter((turn) => turn.role === "user").slice(-3).map((turn) => turn.content).join("; ").slice(0, 490) || result?.message || "Emergency concern" }) });
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || "Could not alert demo dispatch.");
+      setDispatchAlertMessage(result?.language === "Hindi" ? `डेमो डिस्पैच डेस्क को सूचना मिली · स्थिति: ${payload.status}। यह एम्बुलेंस सेवा नहीं है; आपात स्थिति में 112 पर कॉल करें।` : result?.language === "Hinglish" ? `Demo dispatch desk ko alert mila · status ${payload.status}. Yeh ambulance nahi hai; emergency mein 112 par call karein.` : `Demo dispatch desk alerted · status ${payload.status}. This is not an ambulance service; keep 112 as your emergency contact.`);
+      setDispatchAlertStatus(payload.status);
+    } catch (error) { setDispatchAlertMessage(error instanceof Error ? error.message : "Could not alert demo dispatch."); }
+    finally { setDispatchAlertBusy(false); }
+  }
+
+  async function simulateCheckIn(checkin: CheckIn, answer: string) {
+    const token = localStorage.getItem("carecompass_token"); if (!token) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/checkins/${checkin.id}/simulate`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ answer }) });
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || "Check-in failed.");
+      setCheckins((items) => items.map((item) => item.id === checkin.id ? { ...item, state: payload.state, answer } : item));
+      if (payload.emergency) { setResult((current) => current ? { ...current, mode: "emergency", message: current.language === "Hindi" ? "यह आपातकाल हो सकता है। कृपया अभी 112 पर कॉल करें।" : current.language === "Hinglish" ? "Yeh emergency ho sakti hai. Kripya abhi 112 par call karein." : "This may be an emergency. Please call 112 now.", care: payload.care } : current); setDispatchAlertMessage(result?.language === "Hindi" ? "कृपया अभी 112 पर कॉल करें। आप डेमो डिस्पैच डेस्क को भी अलर्ट कर सकती हैं।" : result?.language === "Hinglish" ? "Kripya abhi 112 par call karein. Aap demo dispatch desk ko bhi alert kar sakti hain." : payload.message); }
+      else setToast(result?.language === "Hindi" ? (answer === "same" ? "आपकी मौजूदा बुकिंग जारी है।" : "आपके बेहतर महसूस करने की जानकारी दर्ज हो गई है।") : result?.language === "Hinglish" ? (answer === "same" ? "Aapki booking jaari hai." : "Aapke behtar mehsoos karne ki baat note kar li.") : payload.message);
+    } catch (error) { setBookingError(error instanceof Error ? error.message : "Check-in failed."); }
+  }
+
+  useEffect(() => {
+    if (history.length) window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+  }, [history, result, composerHeight]);
 
   const emergency = result?.mode === "emergency" || result?.care?.care_type === "emergency_112";
   const responseLanguage: VoiceLanguage = result?.language === "Hindi" || result?.language === "Hinglish" ? "hi-IN" : "en-IN";
   const recordingStatus = recording ? `Listening… ${formatTimer(recordingSeconds)} / 0:30` : "";
 
   return (
-    <main className="container patient-layout" style={{ maxWidth: 850 }}>
+    <main className="container patient-layout" style={{ maxWidth: 850, "--composer-height": `${composerHeight}px` } as CSSProperties}>
       <Link href="/" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 700 }}>← CareCompass</Link>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -26 }}>
+        {authUser ? <button type="button" className="pill" onClick={logout}>Log out · {authUser.name}</button> : <Link href="/login" className="pill" style={{ textDecoration: "none" }}>Demo login</Link>}
+      </div>
       <span className="eyebrow" style={{ display: "block", marginTop: 42 }}>Care intake</span>
       <h1 style={{ fontSize: "clamp(36px, 6vw, 56px)", margin: "10px 0" }}>Let’s find the right care.</h1>
       <p className="muted" style={{ fontSize: 17 }}>Share what support you need. This service routes care and does not diagnose or prescribe.</p>
 
-      <section className="card patient-composer" style={{ padding: 24, marginTop: 26 }}>
+      <section ref={composerRef} className="card patient-composer">
+        {locationOpen && <div className="location-popover" role="dialog" aria-label="Location settings">
+          <button type="button" className="button location-use" onClick={useLocation}>Use my location</button>
+          <label>Latitude<input aria-label="Latitude" inputMode="decimal" value={lat} onChange={(event) => setLat(event.target.value)} /></label>
+          <label>Longitude<input aria-label="Longitude" inputMode="decimal" value={lng} onChange={(event) => setLng(event.target.value)} /></label>
+        </div>}
+        {(recording || transcribing) && <p className={`voice-status${recording ? " is-recording" : ""}`} role="status" aria-live="polite">{recording ? recordingStatus : "Transcribing…"}</p>}
         <form onSubmit={send}>
-          <label htmlFor="message" style={{ fontWeight: 700 }}>What’s going on?</label>
-          <div className="intake-composer">
+          <div className="composer-row">
             <textarea
+              ref={inputRef}
               id="message"
+              aria-label="What’s going on?"
               value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="Describe the service or support you need…"
-              rows={4}
-              style={{ width: "100%", resize: "vertical", margin: "10px 0 16px", padding: 15, border: "1px solid #dce7e4", borderRadius: 14, color: "var(--navy)" }}
-            />
-            <button
-              type="button"
-              className={`mic-button${recording ? " is-recording" : ""}`}
-              aria-label="Speak your request"
-              aria-pressed={recording}
-              title={recording ? "Stop recording" : "Speak your request"}
-              onClick={() => recording ? void stopRecording() : void startRecording()}
+              onChange={(event) => {
+                setInput(event.target.value);
+                event.target.style.height = "44px";
+                event.target.style.height = `${Math.min(event.target.scrollHeight, 120)}px`;
+              }}
+              onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+                if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitText(input); }
+              }}
+              placeholder={voiceInputLanguage === "hi-IN" ? "अपनी परेशानी लिखें…" : "Type your request…"}
+              rows={1}
               disabled={busy || transcribing}
-            >
+              className="message-input"
+            />
+            <button type="button" className={`mic-button${recording ? " is-recording" : ""}`} aria-label="Speak your request" aria-pressed={recording} title={recording ? "Stop recording" : "Speak your request"} onClick={() => recording ? void stopRecording() : void startRecording()} disabled={busy || transcribing}>
               <span aria-hidden="true">{recording ? "■" : "🎙"}</span>
             </button>
+            <button type="submit" className="send-button" aria-label="Send request" title="Send request" disabled={busy || transcribing || recording || !input.trim()}>{busy ? "…" : "➤"}</button>
           </div>
-          {(recording || transcribing) && (
-            <p className={`voice-status${recording ? " is-recording" : ""}`} role="status" aria-live="polite">
-              {recording ? recordingStatus : "Transcribing…"}
-            </p>
-          )}
-          <label className="read-aloud-toggle">
-            <input
-              type="checkbox"
-              checked={readAloud}
-              onChange={(event) => setReadAloud(event.target.checked)}
-              aria-label="Read aloud"
-            />
-            <span>Read aloud</span>
-            {!hasUsedMic && <span className="muted read-aloud-hint">Voice replies turn on after your first mic use</span>}
-          </label>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 17 }}>
-            <button type="button" onClick={useLocation} className="button" style={{ background: "#e7f5f2", color: "var(--teal)" }}>◎ Use my location</button>
-            <label className="muted">Lat <input aria-label="Latitude" value={lat} onChange={(event) => setLat(event.target.value)} style={{ width: 90, padding: 8, border: "1px solid #dce7e4", borderRadius: 8 }} /></label>
-            <label className="muted">Lng <input aria-label="Longitude" value={lng} onChange={(event) => setLng(event.target.value)} style={{ width: 90, padding: 8, border: "1px solid #dce7e4", borderRadius: 8 }} /></label>
+          <div className="composer-toolbar">
+            <div className="language-toggle" role="group" aria-label="Speech input language">
+              <button type="button" aria-pressed={voiceInputLanguage === "hi-IN"} onClick={() => chooseVoiceLanguage("hi-IN")}>हिंदी</button>
+              <button type="button" aria-pressed={voiceInputLanguage === "en-IN"} onClick={() => chooseVoiceLanguage("en-IN")}>English</button>
+            </div>
+            <button type="button" className="toolbar-chip" aria-expanded={locationOpen} onClick={() => setLocationOpen((open) => !open)}>📍 Location</button>
+            <button type="button" className="icon-toggle" aria-label={readAloud ? "Turn read aloud off" : "Turn read aloud on"} aria-pressed={readAloud} title={readAloud ? "Turn read aloud off" : "Turn read aloud on"} onClick={() => setReadAloud((enabled) => !enabled)}>{readAloud ? "🔊" : "🔇"}</button>
           </div>
-          <button className="button" disabled={busy || transcribing || recording}>{busy ? "Finding care…" : transcribing ? "Transcribing…" : "Continue →"}</button>
         </form>
-        {error && <p role="alert" style={{ color: "#a91e2a", marginBottom: 0 }}>{error}</p>}
+        {error && <p role="alert" className="composer-error">{error}</p>}
       </section>
 
       {history.length > 0 && (
@@ -457,36 +656,54 @@ export default function PatientPage() {
           {emergency ? (
             <div className="danger">
               <a href="tel:112" className="button" style={{ background: "white", color: "#a91e2a", fontSize: 22, textDecoration: "none", display: "inline-block", marginBottom: 20 }}>{result.language === "Hindi" ? "112 पर कॉल करें" : result.language === "Hinglish" ? "112 par call karein" : "Call 112"}</a>
+              <button type="button" className="button" disabled={dispatchAlertBusy} onClick={() => void alertDispatch()} style={{ display: "block", background: "#741722", marginBottom: 16 }}>{result.language === "Hindi" ? "डेमो डिस्पैच डेस्क को अलर्ट करें (112 के अलावा)" : result.language === "Hinglish" ? "Demo dispatch desk ko alert karein (112 ke alawa)" : "Alert demo dispatch desk (in addition to 112)"}</button>
+              <small style={{ display: "block", marginBottom: 12 }}>{result.language === "Hindi" ? "यह केवल डेमो डिस्पैच है, एम्बुलेंस नहीं; 112 का विकल्प नहीं है।" : result.language === "Hinglish" ? "Yeh sirf demo dispatch hai, ambulance nahi; 112 ka replacement nahi." : "Demo dispatch only; this is not an ambulance and does not replace 112."}</small>
+              {dispatchAlertMessage && <p role="status">{dispatchAlertMessage}</p>}
+              {dispatchAlertStatus && <p role="status">{result.language === "Hindi" ? `डेमो डिस्पैच स्थिति: ${dispatchAlertStatus}` : result.language === "Hinglish" ? `Demo dispatch status: ${dispatchAlertStatus}` : `Demo dispatch status: ${dispatchAlertStatus}`}</p>}
               <h2 style={{ fontSize: 30, margin: "0 0 8px" }}>{result.message}</h2>
               <p style={{ margin: 0 }}>{result.language === "Hindi" ? "यह ऐप आपकी ओर से आपातकालीन सेवाओं को कॉल नहीं कर सकती।" : result.language === "Hinglish" ? "Yeh app aapki taraf se emergency services ko call nahi kar sakti." : "CareCompass cannot call emergency services for you."}</p>
               {(result.care?.red_flags || []).length > 0 && <p>{result.language === "Hindi" ? "खतरे के संकेत:" : result.language === "Hinglish" ? "Khatre ke signs:" : "Red flags:"} {result.care?.red_flags.map((flag) => (result.language === "Hindi" ? hindiRedFlagLabels[flag] : result.language === "Hinglish" ? hinglishRedFlagLabels[flag] : redFlagLabels[flag]) || flag).join(", ")}</p>}
             </div>
           ) : result.mode === "care" && result.care ? (
             <article className="card" style={{ padding: 24 }}>
-              <p style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 0, fontWeight: 700 }}>
-                {result.message}
-                <button type="button" className="speaker-button" aria-label="Read care summary aloud" title="Read care summary aloud" onClick={() => void playSpeech(spokenSummary(result), responseLanguage, true)}>🔊</button>
-              </p>
-              {!!result.suggestions.length && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>{result.suggestions.map((suggestion) => <button key={suggestion} type="button" className="pill" disabled={busy || transcribing} onClick={() => void submitText(suggestion)} style={{ border: "1px solid #cfe2dd", cursor: "pointer", background: "white" }}>{suggestion}</button>)}</div>}
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <h2 style={{ margin: "0 auto 0 0", fontSize: 27 }}>{plainCareValue(result.care.care_type, result.language)}</h2>
                 <span className="pill">{plainUrgency(result.care.urgency, result.language)}</span>
+                <button type="button" className="speaker-button" aria-label="Read care summary aloud" title="Read care summary aloud" onClick={() => void playSpeech(spokenSummary(result), responseLanguage, true)}>🔊</button>
               </div>
               <p className="muted" style={{ lineHeight: 1.6 }}>{plainReasoning(result.care.reasoning, result.language, result.care.care_type, result.care.urgency)}</p>
+              {result.why_not && <p style={{ whiteSpace: "pre-line", lineHeight: 1.55 }}><strong>{result.language === "Hindi" ? "अन्य विकल्प" : result.language === "Hinglish" ? "Dusre options" : "Why other options were not selected"}:</strong> {result.why_not}</p>}
+              {result.safety_net && <p className="pill" style={{ display: "block", whiteSpace: "normal", lineHeight: 1.5, padding: 12 }}>{result.safety_net}</p>}
               {result.care.red_flags.length > 0 && <p style={{ color: "#a91e2a", fontWeight: 700 }}>{result.language === "Hindi" ? "खतरे के संकेत:" : result.language === "Hinglish" ? "Khatre ke signs:" : "Red flags:"} {result.care.red_flags.map((flag) => (result.language === "Hindi" ? hindiRedFlagLabels[flag] : result.language === "Hinglish" ? hinglishRedFlagLabels[flag] : redFlagLabels[flag]) || flag).join(", ")}</p>}
               {result.care.matched_caregivers.length > 0 && <>
                 <button type="button" className="button" aria-expanded={showCaregivers} onClick={() => setShowCaregivers((visible) => !visible)} style={{ marginTop: 10 }}>
                   {showCaregivers ? (result.language === "Hindi" ? "उपलब्ध देखभालकर्ता छिपाएँ" : result.language === "Hinglish" ? "Available caregivers chhupayein" : "Hide available caregivers") : result.language === "Hindi" ? `उपलब्ध देखभालकर्ता दिखाएँ (${result.care.matched_caregivers.length})` : result.language === "Hinglish" ? `Available caregivers dikhayein (${result.care.matched_caregivers.length})` : `Show available caregivers (${result.care.matched_caregivers.length})`}
                 </button>
                 {showCaregivers && <div className="grid" style={{ marginTop: 16 }}>{result.care.matched_caregivers.map((caregiver) => (
-                      <div key={caregiver.caregiver_id} style={{ border: "1px solid #e4ece9", borderRadius: 15, padding: 16, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                      <div key={caregiver.caregiver_id} style={{ border: "1px solid #e4ece9", borderRadius: 15, padding: 16, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                         <div><strong>{caregiver.caregiver_id}</strong><div className="muted" style={{ fontSize: 14, marginTop: 4 }}>{caregiver.reason}</div></div>
-                        <div style={{ textAlign: "right" }}><span className="pill">{caregiver.score.toFixed(2)}</span><br /><button onClick={() => { setToast("Booking will be available soon."); setTimeout(() => setToast(""), 2600); }} style={{ border: 0, background: "none", color: "var(--teal)", fontWeight: 700, cursor: "pointer", marginTop: 8 }}>Book</button></div>
+                        <div style={{ textAlign: "right" }}><span className="pill">{caregiver.score.toFixed(2)}</span><br /><button type="button" onClick={() => openBooking(caregiver.caregiver_id)} style={{ border: 0, background: "none", color: "var(--teal)", fontWeight: 700, cursor: "pointer", marginTop: 8 }}>Book</button></div>
+                        {bookingCaregiver === caregiver.caregiver_id && <div style={{ flexBasis: "100%", display: "grid", gap: 10 }}>
+                          {bookingError && <p role="alert" style={{ color: "#a91e2a", margin: 0 }}>{bookingError} {!authUser && <Link href="/login" target="_blank" style={{ color: "inherit", fontWeight: 700 }}>Open demo login</Link>}</p>}
+                          {authUser?.role === "patient" && <>
+                            <label>Choose an available time
+                              <select value={bookingSlot} onChange={(event) => setBookingSlot(event.target.value)} style={{ display: "block", width: "100%", padding: 11, marginTop: 6, border: "1px solid #dce7e4", borderRadius: 10 }}>
+                                <option value="">Select a slot (IST)</option>
+                                {appointmentSlots(caregiver.reason).map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}
+                              </select>
+                            </label>
+                            <div style={{ display: "flex", gap: 8 }}><button type="button" className="button" disabled={!bookingSlot || bookingBusy} onClick={() => void confirmBooking()}>{bookingBusy ? "Requesting…" : "Confirm request"}</button><button type="button" className="pill" onClick={() => { setBookingCaregiver(null); setBookingError(""); }}>Cancel</button></div>
+                          </>}
+                        </div>}
                       </div>
                 ))}</div>}
               </>}
+              {bookingError && !bookingCaregiver && <p role="alert" style={{ color: "#a91e2a" }}>{bookingError}</p>}
+              {bookings.length > 0 && <section aria-label="My bookings" style={{ marginTop: 20 }}><h3>My booking requests</h3>{bookings.map((booking) => <div key={booking.id} className="pill" style={{ display: "block", marginTop: 8, padding: 12 }}><strong>{booking.caregiver_id}</strong> · {new Date(booking.slot).toLocaleString()} · <span>{booking.state === "requested" ? "Waiting for provider confirmation" : booking.state}</span></div>)}</section>}
+              {checkins.filter((checkin) => checkin.state === "pending").map((checkin) => <section key={checkin.id} className="pill" style={{ display: "block", marginTop: 12, padding: 14 }}><strong>{result.language === "Hindi" ? "डेमो चेक-इन (6 घंटे बाद)" : result.language === "Hinglish" ? "Demo check-in (6 ghante baad)" : "Simulate check-in (6 hours later)"}</strong><p>{result.language === "Hindi" ? "क्या हालत बिगड़ी है? सांस लेने में तकलीफ़, सीने में दर्द या बेहोशी है?" : result.language === "Hinglish" ? "Kya halat bigdi hai? Saans lene mein takleef, seene mein dard ya behoshi hai?" : "Is it worse? Any breathing difficulty, chest pain or fainting?"}</p><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{(["worse", "same", "better"] as const).map((answer) => <button key={answer} className="button" style={{ padding: "9px 14px" }} onClick={() => void simulateCheckIn(checkin, answer)}>{result.language === "Hindi" ? ({ worse: "बिगड़ी", same: "वैसी ही", better: "बेहतर" } as const)[answer] : result.language === "Hinglish" ? ({ worse: "Bigdi", same: "Waisi hi", better: "Behtar" } as const)[answer] : answer[0].toUpperCase() + answer.slice(1)}</button>)}<button className="button" style={{ padding: "9px 14px", background: "#a91e2a" }} onClick={() => void simulateCheckIn(checkin, result.language === "Hindi" ? "हाँ, सीने में दर्द है" : result.language === "Hinglish" ? "Haan, seene mein dard hai" : "Yes, chest pain")}>{result.language === "Hindi" ? "हाँ, खतरे का संकेत" : result.language === "Hinglish" ? "Haan, red flag" : "Yes, red flag"}</button></div></section>)}
             </article>
           ) : null}
+          {!emergency && result.mode === "care" && !!result.suggestions.length && <div className="care-suggestions" aria-label="Care options">{result.suggestions.map((suggestion) => <button key={suggestion} type="button" className="pill" disabled={busy || transcribing} onClick={() => void submitText(suggestion)}>{suggestion}</button>)}</div>}
         </section>
       )}
       <div ref={conversationEndRef} aria-hidden="true" style={{ order: 2, height: 1 }} />

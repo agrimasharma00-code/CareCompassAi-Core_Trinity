@@ -1,5 +1,5 @@
 import re
-from app.core.normalize import normalize_text, history_text, detect_language
+from app.core.normalize import normalize_text, transliterate_to_devanagari, detect_language
 
 SHORT_ACKS = {"haan", "han", "ha", "nahi", "nahin", "yes", "no", "ok", "okay", "2 din", "2 days"}
 SLOT_PATTERNS = {
@@ -38,19 +38,20 @@ def _slot_context(previous, latest):
     return " ".join(pieces)
 
 def prepare(request):
-    latest = normalize_text(request.user_input)
-    previous = _user_turns(request.conversation_history)
-    joined = history_text(request.conversation_history, request.user_input)
+    latest_original = transliterate_to_devanagari(request.user_input)
+    latest = normalize_text(latest_original)
+    previous = [transliterate_to_devanagari(turn) for turn in _user_turns(request.conversation_history)]
+    joined = normalize_text(" ".join(previous + [latest_original]))
     if _is_underspecified(latest):
         triage_text = joined
         language_text = " ".join(previous + [request.user_input])
     else:
-        context = _slot_context(previous, request.user_input)
-        triage_text = normalize_text(" ".join([request.user_input, context]))
-        language_text = request.user_input
+        context = _slot_context(previous, latest_original)
+        triage_text = normalize_text(" ".join([latest_original, context]))
+        language_text = latest_original
     # Keep the original Unicode marks for red-flag matching (normalization can
     # discard Devanagari vowel marks); safety checks scan every user turn.
-    safety_text = " ".join(previous + [request.user_input])
+    safety_text = " ".join(previous + [latest_original])
     detected_language = detect_language(language_text)
     if str(getattr(request, "language", "auto")).lower().startswith("hi"):
         detected_language = "Hindi"

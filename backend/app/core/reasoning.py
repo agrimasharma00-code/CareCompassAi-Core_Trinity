@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 CARE_NAMES = {
     "teleconsultation": {"English": "virtual doctor consultation", "Hindi": "ऑनलाइन डॉक्टर से परामर्श", "Hinglish": "online doctor se salah"},
     "paramedic_home_visit": {"English": "medic home visit", "Hindi": "घर पर मेडिक विज़िट", "Hinglish": "ghar par medic visit"},
@@ -12,22 +15,35 @@ URGENCY_NAMES = {
 }
 
 
-def why_not(care_type, language="English"):
-    alternatives = [name[language] for key, name in CARE_NAMES.items() if key not in (care_type, "emergency_112")]
+def why_not(care_type, language="English", facts=None):
+    alternatives = [(key, name[language]) for key, name in CARE_NAMES.items() if key not in (care_type, "emergency_112")]
     chosen = CARE_NAMES.get(care_type, CARE_NAMES["teleconsultation"])[language]
+    symptom_names = {
+        "English": {"headache": "headache", "fever": "fever", "cough": "cough", "cold": "cold", "stomach pain": "stomach pain", "body ache": "body ache", "acidity": "acidity", "weakness": "weakness", "nausea": "nausea", "vomiting": "vomiting", "diarrhea": "diarrhea"},
+        "Hindi": {"headache": "सिरदर्द", "fever": "बुखार", "cough": "खांसी", "cold": "सर्दी", "stomach pain": "पेट दर्द", "body ache": "बदन दर्द", "acidity": "एसिडिटी", "weakness": "कमज़ोरी", "nausea": "मतली", "vomiting": "उल्टी", "diarrhea": "दस्त"},
+        "Hinglish": {"headache": "sir dard", "fever": "bukhar", "cough": "khansi", "cold": "sardi", "stomach pain": "pet dard", "body ache": "badan dard", "acidity": "acidity", "weakness": "kamzori", "nausea": "matli", "vomiting": "ulti", "diarrhea": "dast"},
+    }
+    known = [symptom_names[language].get(str(item), str(item)) for item in (facts or []) if str(item) in symptom_names[language]]
+    observed = ", ".join(known) if known else None
+    lines = [f"{name} was not selected because the reported {observed or 'care need'} is better matched by {chosen}." for _key, name in alternatives]
     if language == "Hindi":
-        return f"अन्य विकल्प ({', '.join(alternatives)}) नहीं चुने गए क्योंकि आपकी बताई ज़रूरत {chosen} से बेहतर मेल खाती है।"
+        return "\n".join(f"{name} नहीं चुना गया क्योंकि बताई गई {observed or 'देखभाल की ज़रूरत'} के लिए {chosen} बेहतर मेल खाता है।" for _key, name in alternatives)
     if language == "Hinglish":
-        return f"Dusre options ({', '.join(alternatives)}) nahi chune, kyunki aapki batayi zaroorat {chosen} se zyada match karti hai."
-    return f"Other options ({', '.join(alternatives)}) were not selected because your request best matches {chosen}."
+        return "\n".join(f"{name} nahi chuna, kyunki bataye gaye {observed or 'care need'} ke liye {chosen} zyada sahi hai." for _key, name in alternatives)
+    if lines:
+        lines[0] = "Other options: " + lines[0]
+    return "\n".join(lines)
 
 
-def safety_net(language="English"):
+def safety_net(language="English", care_type=None):
+    with (Path(__file__).with_name("safety_net_signs.json")).open(encoding="utf-8") as handle:
+        catalog = json.load(handle)
+    signs = catalog.get(care_type or "", catalog["teleconsultation"])[language]
     if language == "Hindi":
-        return "सीने में दर्द, सांस लेने में तकलीफ़, बेहोशी या भ्रम हो तो तुरंत 112 पर कॉल करें।"
+        return f"ध्यान रखें: {signs} दिखें तो 112 पर कॉल करें।"
     if language == "Hinglish":
-        return "Seene mein dard, saans ki dikkat, behoshi ya confusion ho to turant 112 par call karein."
-    return "If there is chest pain, difficulty breathing, fainting, or confusion, call 112 immediately."
+        return f"Dhyan rakhein: {signs} dikhein to 112 par call karein."
+    return f"Watch for: {signs}. If any appear, call 112."
 
 
 def explain(care_type, urgency, flags, text):

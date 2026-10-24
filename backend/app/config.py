@@ -5,6 +5,8 @@ from typing import Literal
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./carecompass.db"
     demo_password: str = ""
+    jwt_secret: str = ""
+    jwt_exp_minutes: int = 720
     sarvam_api_key: str = ""
     use_llm: bool = False
     sarvam_chat_model: str = "sarvam-105b"

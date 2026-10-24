@@ -107,22 +107,38 @@ class Transcription(str):
         instance.language_code = language_code
         return instance
 
-def transcribe(data: bytes, filename: str) -> str | None:
+def transcribe(data: bytes, filename: str, language_code: str) -> str | None:
     try:
         client = _client()
         if not client:
             return None
+        if language_code not in {"hi-IN", "en-IN"}:
+            raise ValueError("language_code must be hi-IN or en-IN")
         import io
         cfg = get_settings()
-        # Sarvam's SDK supports language_code; "unknown" requests auto-detection.
-        # Keep mode configurable, and never use translate for intake speech.
+        # Pin STT language to the patient's explicit language selection.
         response, _error = _retry(lambda: client.speech_to_text.transcribe(
             file=(filename, io.BytesIO(data)), model=cfg.sarvam_stt_model,
-            mode=cfg.sarvam_stt_mode, language_code="unknown"))
+            mode=cfg.sarvam_stt_mode, language_code=language_code))
         if not response:
             return None
         text = getattr(response, "transcript", None)
         return Transcription(text, getattr(response, "language_code", None)) if text else None
+    except Exception:
+        return None
+
+def transliterate(text: str, source_language_code: str, target_language_code: str = "hi-IN") -> str | None:
+    """Convert text to another Indian script through Sarvam when configured."""
+    try:
+        client = _client()
+        if not client:
+            return None
+        response, _error = _retry(lambda: client.text.transliterate(
+            input=text,
+            source_language_code=source_language_code,
+            target_language_code=target_language_code,
+        ))
+        return getattr(response, "transliterated_text", None) if response else None
     except Exception:
         return None
 

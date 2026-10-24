@@ -2,7 +2,7 @@ import io
 import wave
 from typing import Literal
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -31,11 +31,11 @@ async def _read_wav(file: UploadFile) -> tuple[bytes, str]:
     return data, file.filename or "recording.wav"
 
 @router.post("/stt")
-async def stt(file: UploadFile = File(...)):
+async def stt(file: UploadFile = File(...), language_code: Literal["hi-IN", "en-IN"] = Form("hi-IN")):
     if not sarvam_client.is_configured():
         raise HTTPException(status_code=503, detail="Speech transcription is unavailable because Sarvam is not configured.")
     data, filename = await _read_wav(file)
-    transcript = sarvam_client.transcribe(data, filename)
+    transcript = sarvam_client.transcribe(data, filename, language_code)
     if not transcript or not str(transcript).strip():
         raise HTTPException(status_code=503, detail="Speech transcription is temporarily unavailable. Please try again or type your request.")
     return {"transcript": str(transcript).strip(), "language_code": getattr(transcript, "language_code", None)}

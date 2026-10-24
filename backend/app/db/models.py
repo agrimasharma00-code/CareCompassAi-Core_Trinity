@@ -49,6 +49,8 @@ class Booking(Base):
     care_type: Mapped[str] = mapped_column(String(80))
     urgency: Mapped[str] = mapped_column(String(40))
     handoff_summary: Mapped[str] = mapped_column(Text)
+    patient_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    patient_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     state: Mapped[str] = mapped_column(String(24), default="requested", index=True)
     proposed_slot: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

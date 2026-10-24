@@ -1,0 +1,22 @@
+{
+  "teleconsultation": {
+    "English": "chest pain, difficulty breathing, fainting, or confusion",
+    "Hindi": "सीने में दर्द, सांस लेने में तकलीफ़, बेहोशी या भ्रम",
+    "Hinglish": "seene mein dard, saans lene mein dikkat, behoshi ya confusion"
+  },
+  "paramedic_home_visit": {
+    "English": "chest pain, difficulty breathing, fainting, or sudden confusion",
+    "Hindi": "सीने में दर्द, सांस लेने में तकलीफ़, बेहोशी या अचानक भ्रम",
+    "Hinglish": "seene mein dard, saans lene mein dikkat, behoshi ya achanak confusion"
+  },
+  "home_nursing": {
+    "English": "severe bleeding, difficulty breathing, fainting, or sudden confusion",
+    "Hindi": "बहुत ज़्यादा खून बहना, सांस लेने में तकलीफ़, बेहोशी या अचानक भ्रम",
+    "Hinglish": "zyada bleeding, saans lene mein dikkat, behoshi ya achanak confusion"
+  },
+  "lab_test_home": {
+    "English": "difficulty breathing, fainting, chest pain, or sudden confusion",
+    "Hindi": "सांस लेने में तकलीफ़, बेहोशी, सीने में दर्द या अचानक भ्रम",
+    "Hinglish": "saans lene mein dikkat, behoshi, seene mein dard ya achanak confusion"
+  }
+}

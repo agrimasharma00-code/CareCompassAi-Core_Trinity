@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.core.pipeline import run as run_triage
 from app.core.red_flags import check as check_red_flags
+from app.core.normalize import transliterate_to_devanagari
 from app.core.followup import QUESTION as TRIAGE_QUESTIONS, SCREENING as TRIAGE_SCREENING
 from app.integrations import sarvam_client
 from app.modules.agents import answer as answer_agent
@@ -37,6 +38,8 @@ class AssistantResponse(BaseModel):
     suggestions: list[str]
     care_context: CareContext | None = None
     spoken_message: str | None = None
+    safety_net: str | None = None
+    why_not: str | None = None
 
 
 class IntentClassification(BaseModel):
@@ -201,9 +204,10 @@ def _care_context(care: dict, symptoms: list[str]) -> CareContext | None:
 @router.post("/chat", response_model=AssistantResponse)
 def chat(request: AssistantRequest):
     # Use only the latest message to select language and script for this reply.
-    language = _detect_language(request.message)
+    language = "Hindi" if request.language == "hi-IN" else "English" if request.language == "en-IN" else _detect_language(request.message)
     context = _prior_care_context(request)
-    all_text = _all_user_text(request.history, request.message)
+    routing_message = transliterate_to_devanagari(request.message)
+    all_text = transliterate_to_devanagari(_all_user_text(request.history, request.message))
     symptoms = list(dict.fromkeys((context.symptoms if context else []) + _extract_symptoms(all_text)))
     has_prior_context = bool(context or any(x.get("role") == "user" and (x.get("content") or x.get("text")) for x in request.history))
     care_request = IntakeRequest(user_input=request.message, language="auto", location=request.location, conversation_history=request.history)
@@ -230,10 +234,10 @@ def chat(request: AssistantRequest):
         spoken = answer_agent.spoken_text(message, language, "answer", context.model_dump() if context else None)
         return AssistantResponse(mode="answer", message=message, spoken_message=spoken, care=None, language=language, suggestions=_suggestions("answer", language), care_context=context)
 
-    intent = _rule_intent(request.message)
+    intent = _rule_intent(routing_message)
     if intent is None:
         try:
-            classified = sarvam_client.chat_json(CLASSIFY_SYSTEM, request.message, IntentClassification)
+            classified = sarvam_client.chat_json(CLASSIFY_SYSTEM, routing_message, IntentClassification)
             intent = (classified or {}).get("intent")
         except Exception:
             intent = None
@@ -262,8 +266,8 @@ def chat(request: AssistantRequest):
             care_label = CARE_LABELS.get(care.get("care_type"), {}).get(language, "care")
             urgency_label = URGENCY_LABELS.get(care.get("urgency"), {}).get(language, "")
             message = f"{care_label}, {urgency_label}." if urgency_label else f"{care_label}."
-        if mode == "care" and re.search(QUESTION_WORDS, request.message, re.I) and re.search(PERSONAL, request.message, re.I):
-            message = f"{message} {answer_agent.care_tip(request.message, language)}"
+        if mode == "care" and re.search(QUESTION_WORDS, routing_message, re.I) and re.search(PERSONAL, routing_message, re.I):
+            message = f"{message} {answer_agent.care_tip(routing_message, language)}"
     elif intent == "followup":
         message = _template(intent, language)
     else:
@@ -271,4 +275,10 @@ def chat(request: AssistantRequest):
 
     speech_context = updated_context.model_dump() if updated_context else None
     spoken_message = answer_agent.spoken_text(message, language, mode, speech_context)
-    return AssistantResponse(mode=mode, message=message, spoken_message=spoken_message, care=care, language=language, suggestions=_suggestions(mode, language), care_context=updated_context)
+    safety = None
+    alternatives = None
+    if mode == "care" and care:
+        from app.core.reasoning import safety_net, why_not
+        safety = safety_net(language, care.get("care_type"))
+        alternatives = why_not(care.get("care_type"), language, symptoms)
+    return AssistantResponse(mode=mode, message=message, spoken_message=spoken_message, care=care, language=language, suggestions=_suggestions(mode, language), care_context=updated_context, safety_net=safety, why_not=alternatives)

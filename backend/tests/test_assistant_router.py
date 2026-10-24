@@ -74,7 +74,7 @@ def test_app_help_uses_fixed_faq_context(monkeypatch):
     monkeypatch.setattr(assistant.sarvam_client, "chat_text", fake_chat)
     result = assistant.chat(request("booking kaise karein?"))
     assert result.mode == "app_help" and result.care is None
-    assert "Booking is not enabled yet" in seen["system"]
+    assert "simulated demo workflow" in seen["system"]
 
 
 def test_more_details_explains_prior_decision_without_retriage(monkeypatch):

@@ -34,6 +34,18 @@ def hash_password(password: str, *, salt: bytes | None = None) -> str:
     return f"pbkdf2_sha256$310000${salt.hex()}${digest.hex()}"
 
 
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        algorithm, rounds, salt_hex, digest_hex = encoded.split("$", 3)
+        if algorithm != "pbkdf2_sha256" or int(rounds) != 310_000:
+            return False
+        expected = bytes.fromhex(digest_hex)
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(rounds))
+        return secrets.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
+
+
 def seed_demo_accounts(session: Session, password: str, caregivers_csv: Path = CAREGIVERS_CSV) -> int:
     """Idempotently create or refresh the labelled synthetic demo accounts."""
     if not password:
@@ -68,6 +80,15 @@ def seed_demo_accounts(session: Session, password: str, caregivers_csv: Path = C
 def initialize_database(*, target_engine: Engine = engine, demo_password: str | None = None) -> int:
     """Create all tables and seed demo accounts when a password is configured."""
     Base.metadata.create_all(target_engine)
+    # Upgrade existing demo SQLite files created before optional booking coordinates were added.
+    if target_engine.dialect.name == "sqlite":
+        from sqlalchemy import text
+        with target_engine.begin() as connection:
+            columns = {row[1] for row in connection.execute(text("PRAGMA table_info(bookings)"))}
+            if "patient_latitude" not in columns:
+                connection.execute(text("ALTER TABLE bookings ADD COLUMN patient_latitude FLOAT"))
+            if "patient_longitude" not in columns:
+                connection.execute(text("ALTER TABLE bookings ADD COLUMN patient_longitude FLOAT"))
     password = get_settings().demo_password if demo_password is None else demo_password
     if not password:
         return 0

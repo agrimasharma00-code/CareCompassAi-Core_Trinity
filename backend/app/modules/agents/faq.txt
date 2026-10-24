@@ -1,5 +1,5 @@
 CareCompass services: the care router can suggest a medic home visit, home nursing, a home lab test, or a virtual doctor consultation based on the request. Available options and caregivers are shown when relevant.
-Booking: enter the care request and location. CareCompass shows a suggested care option and available caregivers. Booking is not enabled yet; the current booking control only displays that booking will be available soon.
+Booking: after a non-emergency recommendation, sign in as a demo patient, choose an available caregiver and slot, and confirm a booking request. Providers can accept, reject, or propose another slot from /provider. This is a simulated demo workflow.
 Voice: use the microphone beside the request box to record a request (up to 30 seconds). The transcript is shown and sent through the same care triage flow. Read aloud can speak assistant replies.
-Emergency: CareCompass does not call emergency services. If there may be an emergency, call 112 directly.
+Emergency: CareCompass does not call emergency services. If there may be an emergency, call 112 directly. The separate alert button reaches only the demo dispatch dashboard; it is not an ambulance and does not replace 112.
 Privacy: voice audio is processed in memory by the CareCompass backend for transcription and is not saved there. The audio is sent to Sarvam for speech transcription.
