@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Literal
 
 class Settings(BaseSettings):
+    database_url: str = "sqlite:///./carecompass.db"
+    demo_password: str = ""
     sarvam_api_key: str = ""
     use_llm: bool = False
     sarvam_chat_model: str = "sarvam-105b"

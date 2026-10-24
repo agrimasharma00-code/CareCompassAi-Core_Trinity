@@ -30,6 +30,19 @@ npm run dev
 
 The API is at `http://localhost:8000`; frontend at `http://localhost:3000`. The scored endpoint is `POST /api/v1/care/intake-triage-match`. Health checks are `GET /health` and `GET /api/v1/sarvam/ping`. Set `SARVAM_API_KEY` only in `backend/.env`; it is never exposed to or logged by the frontend. The Sarvam adapter is optional and disabled unless configured.
 
+## Demo roles (synthetic accounts)
+
+Copy the sample `DEMO_PASSWORD` from `backend/.env.example` into `backend/.env` (or choose a local demo password). On backend startup, CareCompass creates the SQLite tables and seeds demo users. All demo accounts use the value of `DEMO_PASSWORD`:
+
+| Demo account | Username | Role |
+| --- | --- | --- |
+| Demo Patient One | `patient1` | patient |
+| Demo Patient Two | `patient2` | patient |
+| Demo Dispatch Desk | `dispatch` | dispatch |
+| Active caregivers | caregiver ID such as `CG_014` | provider |
+
+Provider accounts are created only for caregivers marked active in `backend/data/raw/caregivers.csv`. Their usernames and caregiver IDs match. These synthetic demo credentials are for local judging only; change the sample password before exposing a deployment. The default database is `carecompass.db` in the backend working directory and can be overridden with `DATABASE_URL`. The intake and scored triage routes remain usable without an account.
+
 ## Docker Compose
 
 Copy `backend/.env.example` to `backend/.env`, then run `docker compose up --build`. Data is mounted read-only.

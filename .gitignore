@@ -7,6 +7,7 @@ node_modules/
 out/
 __pycache__/
 *.py[cod]
+*.db
 .venv/
 venv/
 models/*.joblib

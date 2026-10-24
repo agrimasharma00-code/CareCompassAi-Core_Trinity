@@ -9,3 +9,4 @@ sarvamai
 python-dotenv
 pytest
 python-multipart
+sqlalchemy>=2.0
