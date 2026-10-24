@@ -9,7 +9,7 @@ type Result = { follow_up_question: string | null; care_type: string | null; urg
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const pretty = (value: string | null) => value?.replaceAll("_", " ") ?? "";
 
-export default function Home() {
+function LegacyHome() {
   const [message, setMessage] = useState("");
   const [history, setHistory] = useState<Turn[]>([]);
   const [result, setResult] = useState<Result | null>(null);
@@ -47,3 +47,5 @@ export default function Home() {
     {result && !emergency && <section className="mt-6 space-y-4"><div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"><div className="flex flex-wrap items-center gap-3"><h2 className="text-xl font-bold">{result.follow_up_question ? "One quick question" : pretty(result.care_type)}</h2>{result.urgency && <span className={`rounded-full px-3 py-1 text-sm font-bold ${result.urgency === "same_day" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{pretty(result.urgency)}</span>}</div><p className="mt-3 text-slate-700">{result.follow_up_question ?? result.reasoning}</p></div>{!result.follow_up_question && result.matched_caregivers.map((caregiver) => <article key={caregiver.caregiver_id} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><h3 className="font-bold">Caregiver {caregiver.caregiver_id}</h3><p className="mt-1 text-sm text-slate-600">Match score: {Math.round(caregiver.score * 100)}%</p><p className="mt-3">{caregiver.reason}</p><button onClick={() => setToast("Booking request noted — booking is a prototype-only confirmation.")} className="mt-4 rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white">Book</button></article>)}</section>}
   </main>;
 }
+
+export { default } from "./patient-page";
