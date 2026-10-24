@@ -1,0 +1,12 @@
+[
+  {"id":"breathing_difficulty","label":"Breathing difficulty","patterns":["breathing difficulty","short of breath","cannot breathe","saans lene mein dikkat","saans ki dikkat","sans lene mein dikkat","saans nahi aa rahi","सांस लेने में दिक्कत","सांस नहीं आ रही"]},
+  {"id":"chest_pain","label":"Chest pain","patterns":["chest pain","chest hurts","severe chest discomfort","seene mein dard","seene ka dard","सीने में दर्द"]},
+  {"id":"unconsciousness","label":"Unconsciousness or fainting","patterns":["unconscious","passed out","fainted","behosh","बेहोश"]},
+  {"id":"seizure","label":"Seizure","patterns":["seizure","convulsion","fit aa raha","daura","दौरा"]},
+  {"id":"severe_bleeding","label":"Severe bleeding","patterns":["severe bleeding","bleeding will not stop","heavy bleeding","bahut khoon","खून बंद नहीं हो रहा"]},
+  {"id":"stroke_signs","label":"Possible stroke signs","patterns":["face droop","slurred speech","one sided weakness","one-sided weakness","chehra tedha","bolne mein ladkhadahat","एक तरफ कमजोरी"]},
+  {"id":"allergic_reaction","label":"Severe allergic reaction","patterns":["severe allergic reaction","swelling of lips","throat swelling","honth sujan","गला सूज रहा"]},
+  {"id":"infant_fever","label":"Very high fever in an infant","patterns":["infant high fever","baby high fever","newborn fever","3 month old fever","नवजात को तेज बुखार"]},
+  {"id":"suicidal_intent","label":"Suicidal intent","patterns":["want to kill myself","want to die","suicide","khud ko maar","आत्महत्या","खुद को मार"]},
+  {"id":"major_injury","label":"Major injury or accident","patterns":["major accident","serious accident","head injury","road accident","badi chot","गंभीर चोट","सड़क दुर्घटना"]}
+]
