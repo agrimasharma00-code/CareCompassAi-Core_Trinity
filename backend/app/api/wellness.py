@@ -1,6 +1,7 @@
 """Private-in-browser wellness companion; only chat turns reach Sarvam."""
 
 import asyncio
+import re
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -22,12 +23,42 @@ class WellnessMessage(BaseModel):
 
 
 PROMPT = """You are SereneMind, a warm, emotionally attuned wellness companion for India.
+You are ONLY a mental-wellbeing companion. Do not answer maths, coding, homework, trivia,
+news, weather, product, legal, medical-diagnosis, or general-knowledge questions. For any
+unrelated request, briefly say that this is outside SereneMind's role and warmly redirect the
+person to feelings, stress, sleep, relationships, or coping. Do not give the requested factual
+answer, calculation, code, or explanation before redirecting.
 Reply naturally in the user's English, Hindi, or Hinglish. Validate feelings without diagnosing,
 labelling a condition, prescribing medication, or claiming to be a therapist. First reflect the
 specific feeling and context the person named. Then ask one gentle, relevant follow-up question
 or offer one small practical next step. Do not give generic filler. Keep replies under 90 words.
 If safety risk is mentioned, the application handles emergency support; do not minimise it or
 provide self-harm instructions."""
+
+
+_MATH_ONLY = re.compile(
+    r"^\s*(?:(?:what(?:'s| is)|calculate|solve|answer)\s+)?[\d.]+\s*[+\-*/x×÷^]\s*[\d.]+(?:\s*[+\-*/x×÷^]\s*[\d.]+)*\s*[?=]?\s*$",
+    re.IGNORECASE,
+)
+_OFF_TOPIC_TERMS = (
+    "write code", "python code", "javascript", "programming", "debug this", "capital of ",
+    "weather", "temperature in ", "cricket score", "football score", "stock price", "bitcoin",
+    "recipe", "translate ", "who is the president", "homework", "solve this equation",
+)
+
+
+def _is_out_of_scope(text: str) -> bool:
+    """Keep obvious non-wellness tasks out of the companion before they reach the LLM."""
+    lowered = text.casefold().strip()
+    return bool(_MATH_ONLY.fullmatch(lowered)) or any(term in lowered for term in _OFF_TOPIC_TERMS)
+
+
+def _scope_reply(language: Language) -> str:
+    if language == Language.HI:
+        return "माफ़ कीजिए, मैं केवल मानसिक स्वास्थ्य और भावनात्मक सहारे के लिए हूँ, इसलिए गणित या दूसरे सामान्य सवाल हल नहीं कर सकती। अगर आप चाहें तो हम इस बारे में बात कर सकते हैं कि आप अभी कैसा महसूस कर रहे हैं।"
+    if language == Language.HINGLISH:
+        return "Sorry, main sirf mental wellbeing aur emotional support ke liye hoon, isliye maths ya general questions solve nahi karti. Agar aap chahein, hum baat kar sakte hain ki aap abhi kaisa feel kar rahe hain."
+    return "Sorry, I’m a mental-wellbeing companion, so I can’t solve maths or general questions. I can stay with you and talk about how you’re feeling, stress, sleep, relationships, or a small next step that may help."
 
 
 def _fallback_for(text: str) -> str:
@@ -64,7 +95,9 @@ async def wellness_chat(payload: WellnessMessage) -> dict[str, object]:
         reply = "I’m really glad you said this. You deserve immediate support right now—please call 112 or Tele-MANAS at 14416 (free, 24×7). If you can, move near someone you trust and do not stay alone."
         return {"reply": reply, "kind": "emergency", "suggestion": "emergency", "audio_base64": None, "audio_mime_type": None}
     language = language_from_text(text, payload.language)
-    if not settings.sarvam_api_key:
+    if _is_out_of_scope(text):
+        reply = _scope_reply(language)
+    elif not settings.sarvam_api_key:
         reply = "I’m here with you. Would a slow breath, a short journal note, or talking about what feels heaviest help right now?"
     else:
         try:
