@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CareCompass Call Demo</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 20px; font: 16px system-ui, sans-serif; color: #102a43; background: #f3f8f6; }
+    main { width: 100%; max-width: 420px; padding: 28px; border: 1px solid #d9e7e2; border-radius: 20px; background: #fff; box-shadow: 0 18px 50px #13382a16; }
+    h1 { margin: 0 0 8px; } p { color: #526b7f; line-height: 1.5; }
+    input, button { width: 100%; padding: 14px; border-radius: 10px; font: inherit; }
+    input { border: 1px solid #b9cec6; margin: 14px 0 8px; }
+    button { margin-top: 10px; border: 0; background: #078a7d; color: #fff; font-weight: 700; cursor: pointer; }
+    button.alt { background: #e6f5f1; color: #07665d; }
+    #err { min-height: 24px; margin: 12px 0 0; color: #b42318; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Click to call</h1>
+    <p>Your device will open its dialer and ask for confirmation.</p>
+    <input id="num" type="tel" placeholder="+91XXXXXXXXXX" autocomplete="tel">
+    <button type="button" id="typed">Call typed number</button>
+    <button type="button" class="alt" id="support">Call Support</button>
+    <button type="button" class="alt" id="sales">Call Sales</button>
+    <p id="err" role="alert"></p>
+  </main>
+  <script>
+    const PRESETS = { support: '+91XXXXXXXXXX', sales: '+91YYYYYYYYYY' };
+    const err = document.querySelector('#err');
+    function dial(n) {
+      n = n.replace(/[\s\-()]/g, '');
+      if (!/^\+?\d{7,15}$/.test(n)) { err.textContent = 'Invalid number'; return; }
+      err.textContent = '';
+      window.location.href = 'tel:' + n;
+    }
+    document.querySelector('#typed').addEventListener('click', () => dial(document.querySelector('#num').value));
+    document.querySelector('#support').addEventListener('click', () => dial(PRESETS.support));
+    document.querySelector('#sales').addEventListener('click', () => dial(PRESETS.sales));
+  </script>
+</body>
+</html>
