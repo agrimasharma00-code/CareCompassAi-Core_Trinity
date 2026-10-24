@@ -13,7 +13,7 @@ from app.core.loaders import load_caregivers
 
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
-SECRET = b"carecompass-demo-only-not-for-production"
+SECRET = b"niramaya-demo-only-not-for-production"
 ROLES = {"patient", "hospital", "ambulance"}
 
 

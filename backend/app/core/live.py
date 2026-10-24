@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-DATABASE_PATH = Path(__file__).resolve().parents[2] / "data" / "carecompass_demo.sqlite3"
+DATABASE_PATH = Path(__file__).resolve().parents[2] / "data" / "niramaya_demo.sqlite3"
 
 
 def _connection() -> sqlite3.Connection:

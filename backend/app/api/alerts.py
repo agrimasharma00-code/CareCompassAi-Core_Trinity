@@ -16,7 +16,7 @@ class AlertStatus(BaseModel):
 
 class EmergencyCall(BaseModel):
     patient_name: str = "Demo patient"
-    summary: str = "Emergency help requested from CareCompass"
+    summary: str = "Emergency help requested from Niramaya"
     red_flags: list[str] = []
     latitude: float = 28.545
     longitude: float = 77.192

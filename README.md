@@ -1,6 +1,6 @@
-# CareCompass AI — Foundation + Core
+# Niramaya AI — Foundation + Core
 
-CareCompass provides **care routing only**. It never diagnoses or prescribes. Emergency routes direct people to 112. The included Sanocare dataset and caregiver roster are fully synthetic, not clinical ground truth, and are for the hackathon only.
+Niramaya provides **care routing only**. It never diagnoses or prescribes. Emergency routes direct people to 112. The included Sanocare dataset and caregiver roster are fully synthetic, not clinical ground truth, and are for the hackathon only.
 
 ## Requirements
 

@@ -1,1 +1,1 @@
-"""CareCompass backend package."""
+"""Niramaya backend package."""

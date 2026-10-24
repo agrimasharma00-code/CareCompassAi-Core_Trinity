@@ -1,5 +1,6 @@
 """Low-latency microphone bridge: browser PCM -> Sarvam Realtime STT -> care route."""
 
+import asyncio
 import base64
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -21,7 +22,7 @@ router = APIRouter(prefix="/api/v1/voice", tags=["voice"])
 async def realtime_voice(socket: WebSocket) -> None:
     """Keep the API key server-side while forwarding 16-kHz mono linear16 PCM.
 
-    The default is the medical CareCompass agent.  The virtual-phone experience
+    The default is the medical Niramaya agent.  The virtual-phone experience
     opts into ``?assistant=nova``; it shares the same real Sarvam STT/TTS
     transport but has a separate, general-conversation personality.
     """
@@ -47,13 +48,13 @@ async def realtime_voice(socket: WebSocket) -> None:
             prompt=(
                 "NOVA multilingual virtual phone assistant. It can discuss ordinary topics in English, Hindi, or Hinglish."
                 if is_nova
-                else "CareCompass healthcare access routing; terms include fever, cough, breathing difficulty, ambulance."
+                else "Niramaya healthcare access routing; terms include fever, cough, breathing difficulty, ambulance."
             ),
         ) as stream:
             greeting = (
                 "Hello! You've reached NOVA, your AI assistant. It's great to have you here. What would you like to talk about today?"
                 if is_nova
-                else "Hello, I am CareCompass. Tell me what is happening, and I will help you find the right next step."
+                else "Hello, I am Niramaya. Tell me what is happening, and I will help you find the right next step."
             )
             greeting_audio = await _sarvam_audio_reply(greeting, "en-IN")
             await socket.send_json({
@@ -121,6 +122,8 @@ async def realtime_voice(socket: WebSocket) -> None:
                         })
                     elif event.event == "error":
                         await socket.send_json({"type": "error", "message": event.message})
+
+            await asyncio.gather(send_audio(), receive_events())
     except WebSocketDisconnect:
         return
     except Exception:

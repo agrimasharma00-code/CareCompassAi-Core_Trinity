@@ -141,7 +141,7 @@ export default function NovaDialPage() {
         if (message.type === "final") { const transcript = message.transcript?.trim(); const reply = message.agent_reply?.trim(); if (transcript) addTurn("You", transcript); if (reply) addTurn("NOVA", reply); setPartial(""); playAgentAudio(message.audio_base64, message.audio_mime_type); }
         if (message.type === "error") stopForError(message.message ?? "NOVA could not connect right now.");
       };
-      socket.onerror = () => stopForError("Could not connect to the voice service. Check that the CareCompass backend is running and SARVAM_API_KEY is configured.");
+      socket.onerror = () => stopForError("Could not connect to the voice service. Check that the Niramaya backend is running and SARVAM_API_KEY is configured.");
       socket.onclose = () => { if (socketRef.current === socket) stopForError("Voice connection closed before it was ready."); };
     } catch (error) {
       const message = error instanceof DOMException && error.name === "NotAllowedError" ? "Microphone permission was denied. Allow it in the browser, then call again." : "Microphone or network is unavailable. Check your connection and try again.";
@@ -156,7 +156,7 @@ export default function NovaDialPage() {
   const duration = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return <main className={`nova-page nova-${theme}`}>
-    <header className="nova-header"><Link href="/patient">← Back to CareCompass</Link><div><label htmlFor="theme">Phone theme</label><select id="theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}><option value="classic">Classic Retro</option><option value="cyber">Cyberpunk AI</option><option value="luxury">Luxury Edition</option><option value="minimal">Minimalist</option><option value="neon">Dark Neon</option></select></div></header>
+    <header className="nova-header"><Link href="/patient">← Back to Niramaya</Link><div><label htmlFor="theme">Phone theme</label><select id="theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}><option value="classic">Classic Retro</option><option value="cyber">Cyberpunk AI</option><option value="luxury">Luxury Edition</option><option value="minimal">Minimalist</option><option value="neon">Dark Neon</option></select></div></header>
     <section className="nova-layout">
       <div className="nova-phone" aria-label="Virtual NOVA keypad phone">
         <div className="nova-speaker"><i /><i /><i /><i /><i /></div>
@@ -173,7 +173,7 @@ export default function NovaDialPage() {
         <span className="nova-eyebrow">DIAL 99990000</span><h1>Talk to intelligence.</h1><p>Dial NOVA for a real multilingual voice conversation powered by Sarvam. Speak naturally in English, Hindi, or Hinglish.</p>
         <div className="nova-privacy"><strong>Microphone privacy</strong><span>Microphone capture is active only during a connected call. Audio is not saved by this app.</span><label><input type="checkbox" checked={historyEnabled} onChange={(event) => setHistoryEnabled(event.target.checked)} /> Save this call&apos;s text transcript locally</label><button type="button" onClick={clearHistory}>Clear saved history</button></div>
         {showTranscript && <div className="nova-transcript" aria-live="polite"><div><strong>Live transcript</strong><button type="button" onClick={() => setTurns([])}>Clear</button></div>{turns.length === 0 ? <p>Your conversation will appear here after NOVA connects.</p> : turns.map((turn, index) => <article key={`${turn.role}-${index}`} className={turn.role === "You" ? "nova-you" : "nova-agent"}><small>{turn.role} · {turn.at}</small><p>{turn.text}</p></article>)}{partial && <article className="nova-you pending"><small>You are saying</small><p>{partial}</p></article>}</div>}
-        <p className="nova-note">NOVA is an AI assistant. For urgent medical care, use CareCompass and call 5555.</p>
+        <p className="nova-note">NOVA is an AI assistant. For urgent medical care, use Niramaya and call 5555.</p>
       </aside>
     </section>
   </main>;

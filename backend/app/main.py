@@ -11,11 +11,19 @@ from app.api.ws import router as ws_router
 from app.api.metrics import router as metrics_router
 
 
-app = FastAPI(title="CareCompass API", version="0.1.0")
+app = FastAPI(title="Niramaya API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    # Browsers treat localhost and 127.0.0.1 as different origins.
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    # Browsers treat hostnames and ports as different origins. The local
+    # frontend may use an alternate port when another dev server is running.
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+    ],
     # Explicitly allow browser preflight; sign-in POSTs use JSON and therefore
     # require an OPTIONS request before the browser sends credentials.
     allow_methods=["GET", "POST", "OPTIONS"],

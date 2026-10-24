@@ -65,7 +65,7 @@ export default function PatientPage() {
         void context.decodeAudioData(bytes.buffer).then((buffer) => {
           audioSourceRef.current?.stop();
           const source = context.createBufferSource(); source.buffer = buffer; source.connect(context.destination);
-          audioSourceRef.current = source; speakingRef.current = true; setSpeaking(true); setStatus("CareCompass is speaking…");
+          audioSourceRef.current = source; speakingRef.current = true; setSpeaking(true); setStatus("Niramaya is speaking…");
           source.onended = () => { if (audioSourceRef.current === source) { audioSourceRef.current = null; finish(); } };
           source.start();
         }).catch(() => setStatus(`${fallbackText ?? "Care guidance is ready."} Audio could not be decoded.`));
@@ -78,7 +78,7 @@ export default function PatientPage() {
       audioRef.current = null; speakingRef.current = false; setSpeaking(false);
       setStatus(socketRef.current?.readyState === WebSocket.OPEN ? "Listening — tell me more, or tap End." : "Care guidance is ready.");
     };
-    audioRef.current?.pause(); audioRef.current = audio; speakingRef.current = true; setSpeaking(true); setStatus("CareCompass is speaking…");
+    audioRef.current?.pause(); audioRef.current = audio; speakingRef.current = true; setSpeaking(true); setStatus("Niramaya is speaking…");
     audio.onended = finish; audio.onerror = finish;
     void audio.play().catch(() => { finish(); setStatus(`${fallbackText ?? "Care guidance is ready."} Audio playback was blocked by the browser.`); });
   }
@@ -95,7 +95,7 @@ export default function PatientPage() {
     setBusy(true); setStatus("");
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/voice/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, language: "auto", lat: location.lat, lng: location.lng, conversation_history: turns }) });
-      if (!response.ok) throw new Error("CareCompass could not respond right now.");
+      if (!response.ok) throw new Error("Niramaya could not respond right now.");
       const message = await response.json() as { reply: string; response?: CareResult | null; audio_base64?: string; audio_mime_type?: string };
       setInput(""); addFinalTurn(text, message.reply, message.response ?? undefined);
       playAgentAudio(message.audio_base64, message.audio_mime_type, message.reply);
@@ -149,7 +149,7 @@ export default function PatientPage() {
     const context = new AudioContext(); contextRef.current = context; void context.resume();
     try {
       const health = await fetch(`${API_BASE_URL}/health`);
-      if (!health.ok) throw new Error("The CareCompass backend is unavailable.");
+      if (!health.ok) throw new Error("The Niramaya backend is unavailable.");
       await context.resume();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
       const socket = new WebSocket(`${API_BASE_URL.replace(/^http/, "ws")}/api/v1/voice/realtime`);
@@ -157,7 +157,7 @@ export default function PatientPage() {
       socket.onmessage = (event) => {
         const message = JSON.parse(event.data) as VoiceMessage;
         if (message.type === "ready") {
-          const greeting = message.text ?? "Hello, I am CareCompass. Tell me what is happening.";
+          const greeting = message.text ?? "Hello, I am Niramaya. Tell me what is happening.";
           setTurns([{ role: "assistant", content: greeting }]);
           playAgentAudio(message.audio_base64, message.audio_mime_type, greeting);
         }
@@ -172,7 +172,7 @@ export default function PatientPage() {
         if (message.type === "error") stopVoice(message.message ?? "Voice connection failed.");
       };
       socket.onerror = () => stopVoice("Could not connect to Sarvam voice. Check the backend and the Sarvam key.");
-      socket.onclose = () => { if (socketRef.current === socket) stopVoice("Voice connection closed. Tap Talk to CareCompass to reconnect."); };
+      socket.onclose = () => { if (socketRef.current === socket) stopVoice("Voice connection closed. Tap Talk to Niramaya to reconnect."); };
       socket.onopen = async () => {
         const source = context.createMediaStreamSource(stream);
         const silentOutput = context.createGain(); silentOutput.gain.value = 0;
@@ -190,10 +190,10 @@ export default function PatientPage() {
         };
         try {
           if (!context.audioWorklet || typeof AudioWorkletNode === "undefined") throw new Error("AudioWorklet unavailable");
-          const code = `class CareCompassPcm extends AudioWorkletProcessor { constructor(){super();this.buffer=new Float32Array(1600);this.offset=0;} process(inputs){const channel=inputs[0]&&inputs[0][0];if(!channel)return true;for(let i=0;i<channel.length;i+=1){this.buffer[this.offset++]=channel[i];if(this.offset===this.buffer.length){this.port.postMessage(this.buffer.slice(0));this.offset=0;}}return true;} } registerProcessor("carecompass-pcm",CareCompassPcm);`;
+          const code = `class NiramayaPcm extends AudioWorkletProcessor { constructor(){super();this.buffer=new Float32Array(1600);this.offset=0;} process(inputs){const channel=inputs[0]&&inputs[0][0];if(!channel)return true;for(let i=0;i<channel.length;i+=1){this.buffer[this.offset++]=channel[i];if(this.offset===this.buffer.length){this.port.postMessage(this.buffer.slice(0));this.offset=0;}}return true;} } registerProcessor("niramaya-pcm",NiramayaPcm);`;
           const moduleUrl = URL.createObjectURL(new Blob([code], { type: "application/javascript" }));
           await context.audioWorklet.addModule(moduleUrl); URL.revokeObjectURL(moduleUrl);
-          const processor = new AudioWorkletNode(context, "carecompass-pcm");
+          const processor = new AudioWorkletNode(context, "niramaya-pcm");
           processor.port.onmessage = (event: MessageEvent<Float32Array>) => sendPcm(event.data);
           source.connect(processor); processor.connect(silentOutput); processorRef.current = processor;
         } catch { legacyProcessor(); }
@@ -203,7 +203,7 @@ export default function PatientPage() {
       void contextRef.current?.close(); contextRef.current = null;
       setVoiceMode(false);
       const message = error instanceof Error ? error.message : "Microphone access is required for voice guidance.";
-      setStatus(message === "Failed to fetch" ? "The browser could not reach CareCompass. Start the backend, then try again." : message);
+      setStatus(message === "Failed to fetch" ? "The browser could not reach Niramaya. Start the backend, then try again." : message);
     }
   }
 
@@ -223,26 +223,26 @@ export default function PatientPage() {
 
   const emergency = result?.care_type === "emergency_referral";
   return <main className="container" style={{ maxWidth: 900, padding: "24px 0 64px" }}>
-    <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}><Link href="/" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 700 }}>← CareCompass AI</Link><Link href="/dial" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 800, fontSize: 14 }}>Dial NOVA 99990000 →</Link></header>
-    <section style={{ marginTop: 42, maxWidth: 710 }}><span className="eyebrow">CareAgent Nexus</span><h1 style={{ fontSize: "clamp(36px, 6vw, 58px)", margin: "10px 0" }}>Let&apos;s find the right care.</h1><p className="muted" style={{ fontSize: 18, lineHeight: 1.6 }}>Speak or type in English, Hindi, or Hinglish. CareCompass helps navigate care; it does not diagnose or prescribe.</p><a href="tel:5555" onClick={notifyEmergencyContacts} className="button" style={{ marginTop: 16, display: "inline-block", background: "#a91e2a", textDecoration: "none" }}>Emergency? Call 5555</a></section>
+    <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}><Link href="/" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 700 }}>← Niramaya AI</Link><Link href="/dial" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 800, fontSize: 14 }}>Dial NOVA 99990000 →</Link></header>
+    <section style={{ marginTop: 42, maxWidth: 710 }}><span className="eyebrow">CareAgent Nexus</span><h1 style={{ fontSize: "clamp(36px, 6vw, 58px)", margin: "10px 0" }}>Let&apos;s find the right care.</h1><p className="muted" style={{ fontSize: 18, lineHeight: 1.6 }}>Speak or type in English, Hindi, or Hinglish. Niramaya helps navigate care; it does not diagnose or prescribe.</p><a href="tel:5555" onClick={notifyEmergencyContacts} className="button" style={{ marginTop: 16, display: "inline-block", background: "#a91e2a", textDecoration: "none" }}>Emergency? Call 5555</a></section>
     <section className="card" style={{ marginTop: 28, padding: 24 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><div><span className="eyebrow">Live voice conversation</span><h2 style={{ margin: "7px 0 0", fontSize: 26 }}>Talk to CareCompass</h2></div><button type="button" onClick={startVoice} disabled={busy} className="button" style={{ background: listening ? "#a91e2a" : "var(--teal)" }}>{listening ? (speaking ? "CareCompass is speaking…" : "■ End voice") : "● Talk to CareCompass"}</button></div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><div><span className="eyebrow">Live voice conversation</span><h2 style={{ margin: "7px 0 0", fontSize: 26 }}>Talk to Niramaya</h2></div><button type="button" onClick={startVoice} disabled={busy} className="button" style={{ background: listening ? "#a91e2a" : "var(--teal)" }}>{listening ? (speaking ? "Niramaya is speaking…" : "■ End voice") : "● Talk to Niramaya"}</button></div>
       <p className="muted" style={{ margin: "12px 0 0", fontSize: 14 }}>Your words and the agent&apos;s reply appear in this conversation. Allow microphone access when asked.</p>
       <div aria-live="polite" style={{ marginTop: 20, maxHeight: 330, overflowY: "auto", display: "grid", gap: 10, padding: 4 }}>
         {turns.length === 0 && <p className="muted" style={{ margin: "28px 0", textAlign: "center" }}>Start a voice conversation or type a message below.</p>}
-        {turns.map((turn, index) => <div key={`${turn.role}-${index}`} style={{ justifySelf: turn.role === "user" ? "end" : "start", maxWidth: "88%", borderRadius: 18, padding: "12px 15px", background: turn.role === "user" ? "#e6f5f1" : "#f1f5f4" }}><strong style={{ display: "block", fontSize: 11, color: "var(--teal)", letterSpacing: ".07em", textTransform: "uppercase", marginBottom: 5 }}>{turn.role === "user" ? "You" : "CareCompass"}</strong>{turn.content}</div>)}
+        {turns.map((turn, index) => <div key={`${turn.role}-${index}`} style={{ justifySelf: turn.role === "user" ? "end" : "start", maxWidth: "88%", borderRadius: 18, padding: "12px 15px", background: turn.role === "user" ? "#e6f5f1" : "#f1f5f4" }}><strong style={{ display: "block", fontSize: 11, color: "var(--teal)", letterSpacing: ".07em", textTransform: "uppercase", marginBottom: 5 }}>{turn.role === "user" ? "You" : "Niramaya"}</strong>{turn.content}</div>)}
         {liveTranscript && <div style={{ justifySelf: "end", maxWidth: "88%", borderRadius: 18, padding: "12px 15px", background: "#f0fbf8", color: "var(--muted)" }}><strong style={{ display: "block", fontSize: 11, color: "var(--teal)", marginBottom: 5 }}>YOU ARE SAYING</strong>{liveTranscript}</div>}
       </div>
-      <form onSubmit={sendText} style={{ marginTop: 20 }}><label htmlFor="message" style={{ fontWeight: 700 }}>Or type your message</label><textarea id="message" value={input} onChange={(event) => setInput(event.target.value)} placeholder="e.g. papa ko do din se bukhar hai" rows={3} style={{ width: "100%", resize: "vertical", margin: "10px 0 14px", padding: 15, border: "1px solid #dce7e4", borderRadius: 14, color: "var(--navy)", font: "inherit" }} /><div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><button type="submit" disabled={busy} className="button">{busy ? "CareCompass is thinking…" : "Send message →"}</button><button type="button" onClick={useLocation} className="button" style={{ background: "#e7f5f2", color: "var(--teal)" }}>◎ Use my location</button></div></form>
+      <form onSubmit={sendText} style={{ marginTop: 20 }}><label htmlFor="message" style={{ fontWeight: 700 }}>Or type your message</label><textarea id="message" value={input} onChange={(event) => setInput(event.target.value)} placeholder="e.g. papa ko do din se bukhar hai" rows={3} style={{ width: "100%", resize: "vertical", margin: "10px 0 14px", padding: 15, border: "1px solid #dce7e4", borderRadius: 14, color: "var(--navy)", font: "inherit" }} /><div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><button type="submit" disabled={busy} className="button">{busy ? "Niramaya is thinking…" : "Send message →"}</button><button type="button" onClick={useLocation} className="button" style={{ background: "#e7f5f2", color: "var(--teal)" }}>◎ Use my location</button></div></form>
     </section>
     {status && <p role="status" className="pill" style={{ marginTop: 16 }}>{status}</p>}
-    {emergency && <section className="danger" style={{ marginTop: 24 }}><a href="tel:5555" onClick={notifyEmergencyContacts} className="button" style={{ background: "white", color: "#a91e2a", textDecoration: "none" }}>Call 5555 now</a><h2 style={{ margin: "20px 0 7px", fontSize: 29 }}>This may need immediate care.</h2><p style={{ margin: 0 }}>{result?.reasoning}</p><p style={{ margin: "12px 0 0", fontSize: 14 }}>After you tap Call 5555, CareCompass also creates a clearly labelled demo dispatch alert for family contact and the ambulance partner.</p></section>}
+    {emergency && <section className="danger" style={{ marginTop: 24 }}><a href="tel:5555" onClick={notifyEmergencyContacts} className="button" style={{ background: "white", color: "#a91e2a", textDecoration: "none" }}>Call 5555 now</a><h2 style={{ margin: "20px 0 7px", fontSize: 29 }}>This may need immediate care.</h2><p style={{ margin: 0 }}>{result?.reasoning}</p><p style={{ margin: "12px 0 0", fontSize: 14 }}>After you tap Call 5555, Niramaya also creates a clearly labelled demo dispatch alert for family contact and the ambulance partner.</p></section>}
     {result && !emergency && <section className="card" style={{ marginTop: 24, padding: 24 }}><span className="pill">{result.urgency?.replace("_", " ") ?? "Care guidance"}</span><h2 style={{ margin: "12px 0 6px", fontSize: 26 }}>{result.follow_up_question ? "One quick question" : careNames[result.care_type ?? ""] ?? "Care option"}</h2><p className="muted" style={{ lineHeight: 1.6 }}>{result.follow_up_question ?? result.reasoning}</p>{result.matched_caregivers.length > 0 && <div className="grid" style={{ marginTop: 16 }}>{result.matched_caregivers.map((caregiver) => <div key={caregiver.caregiver_id} style={{ border: "1px solid #e4ece9", borderRadius: 15, padding: 16 }}><strong>{caregiver.caregiver_id}</strong><p className="muted" style={{ margin: "7px 0 0", fontSize: 14 }}>{caregiver.reason}</p></div>)}</div>}</section>}
     {result && <section className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", marginTop: 16 }}><article className="card" style={{ padding: 20 }}><span className="eyebrow">Safety net</span><p style={{ lineHeight: 1.55 }}>{result.safety_netting || "If symptoms get worse, call 5555 immediately."}</p></article><article className="card" style={{ padding: 20 }}><span className="eyebrow">Why this route</span><p style={{ lineHeight: 1.55 }}>{result.why_not || result.reasoning}</p></article><article className="card" style={{ padding: 20 }}><span className="eyebrow">Provider handoff</span><p style={{ lineHeight: 1.55 }}>{result.handoff_summary || result.reasoning}</p></article></section>}
     {result && !emergency && result.matched_caregivers.length > 0 && <section className="card" style={{ marginTop: 16, padding: 20 }}><span className="eyebrow">One-tap booking</span><h2 style={{ margin: "8px 0 14px" }}>Choose a matched caregiver</h2><div className="grid">{result.matched_caregivers.map((caregiver) => <div key={`book-${caregiver.caregiver_id}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, borderTop: "1px solid #e4ece9", paddingTop: 12 }}><div><strong>{caregiver.caregiver_id}</strong><p className="muted" style={{ margin: "3px 0 0", fontSize: 14 }}>{caregiver.reason}</p></div><button className="button" onClick={() => bookCaregiver(caregiver)} disabled={busy}>Book</button></div>)}</div>{booking && <div style={{ marginTop: 16 }}><span className="pill">{booking.id}: {booking.status}</span><button className="button" style={{ marginLeft: 10 }} onClick={simulateReTriage} disabled={busy}>Simulate 6-hour check-in</button></div>}</section>}
-    {voiceMode && <section className="voice-mode" role="dialog" aria-label="CareCompass voice conversation">
-      <div className="voice-mode-top"><span className="voice-mode-brand">✳ CareCompass</span><button type="button" className="voice-close" onClick={() => stopVoice("Voice session ended.")} aria-label="Close voice conversation">×</button></div>
-      <div className="voice-stage"><div className={`voice-orb ${speaking ? "voice-orb-speaking" : ""} ${listening && !speaking ? "voice-orb-listening" : ""}`} aria-hidden="true" /><p className="voice-status">{speaking ? "CareCompass is speaking" : muted ? "Microphone is muted" : liveTranscript || (listening ? "Listening…" : "Connecting to CareCompass…")}</p>{turns.length > 0 && <p className="voice-last-reply">{turns[turns.length - 1].content}</p>}</div>
+    {voiceMode && <section className="voice-mode" role="dialog" aria-label="Niramaya voice conversation">
+      <div className="voice-mode-top"><span className="voice-mode-brand">✳ Niramaya</span><button type="button" className="voice-close" onClick={() => stopVoice("Voice session ended.")} aria-label="Close voice conversation">×</button></div>
+      <div className="voice-stage"><div className={`voice-orb ${speaking ? "voice-orb-speaking" : ""} ${listening && !speaking ? "voice-orb-listening" : ""}`} aria-hidden="true" /><p className="voice-status">{speaking ? "Niramaya is speaking" : muted ? "Microphone is muted" : liveTranscript || (listening ? "Listening…" : "Connecting to Niramaya…")}</p>{turns.length > 0 && <p className="voice-last-reply">{turns[turns.length - 1].content}</p>}</div>
       <form className="voice-composer" onSubmit={sendText}><button type="button" className="voice-add" onClick={useLocation} aria-label="Use my location">+</button><textarea value={input} onChange={(event) => setInput(event.target.value)} rows={1} placeholder="Type a message" aria-label="Type a message" /><button type="button" className={`voice-mute ${muted ? "voice-mute-on" : ""}`} onClick={toggleMute} aria-label={muted ? "Unmute microphone" : "Mute microphone"}>{muted ? "⌁" : "♩"}</button><button type="submit" className="voice-send" disabled={busy || !input.trim()} aria-label="Send typed message">↑</button></form>
     </section>}
   </main>;
