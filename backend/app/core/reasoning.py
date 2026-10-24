@@ -19,7 +19,15 @@ def build_reasoning(text: str, facts: IntakeFacts, red_flags: list[str] | None =
         summary += f" for {facts.duration}"
     if facts.relation:
         summary += f" for {facts.relation}"
-    return summary + ". No emergency warning signs were detected in this message."
+    base = summary + ". No emergency warning signs were detected in this message."
+    lower = text.lower()
+    if any(term in lower for term in ("headache", "head ache", "head pain", "sir dard", "sar dard", "sar mein dard")):
+        if facts.language == "hi":
+            return base + " सिरदर्द के कई कारण हो सकते हैं, जैसे तनाव, पानी की कमी, आंखों पर जोर या माइग्रेन जैसा पैटर्न; यह निदान नहीं है।"
+        if facts.language == "hinglish":
+            return base + " Headache ke kai causes ho sakte hain, jaise stress, dehydration, eye strain, ya migraine jaisa pattern; yeh diagnosis nahi hai."
+        return base + " Headaches can have several causes, including stress, dehydration, eye strain, or a migraine-like pattern; this is not a diagnosis."
+    return base
 
 
 def safety_netting(red_flags: list[str], urgency: str | None) -> str:

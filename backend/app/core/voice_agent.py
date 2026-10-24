@@ -163,7 +163,10 @@ def route_from_understanding(
     language: Language,
 ) -> CareResponse:
     """Use Sarvam's validated normal-care decision; deterministic red flags override it."""
-    if not decision or provisional.red_flags:
+    # Intake is intentionally authoritative until it has gathered the few
+    # details needed for a safe route. A confident LLM classification must not
+    # jump straight to a booking while the patient is answering a question.
+    if not decision or provisional.red_flags or provisional.follow_up_question:
         return provisional
     try:
         care_type = CareType(decision.care_type) if decision.care_type else None
