@@ -40,15 +40,12 @@ export default function PatientPage() {
   async function requestCare(text: string) {
     setBusy(true); setState("");
     try {
-      const response = await fetch(`${API}/api/v1/care/intake-triage-match`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_input: text, language: "auto", location: { lat: 28.545, lng: 77.192 }, conversation_history: [] }) });
-      if (!response.ok) throw new Error("CareCompass could not route that request.");
-      const route: CareResult = await response.json(); setResult(route); setInput("");
-      const textToSpeak = route.follow_up_question ?? route.reasoning;
-      setConversation((items) => [...items, { role: "user", content: text }, { role: "assistant", content: textToSpeak }]);
-      void fetch(`${API}/api/v1/voice/speak`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: textToSpeak, language_code: "en-IN" }) })
-        .then((reply) => reply.json()).then((voice: { audio_base64?: string; audio_mime_type?: string }) => {
-          if (voice.audio_base64 && voice.audio_mime_type) new Audio(`data:${voice.audio_mime_type};base64,${voice.audio_base64}`).play();
-        }).catch(() => undefined);
+      const response = await fetch(`${API}/api/v1/voice/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, language: "auto", lat: 28.545, lng: 77.192, conversation_history: conversation.map((message) => ({ role: message.role, content: message.content })) }) });
+      if (!response.ok) throw new Error("CareCompass could not respond right now.");
+      const message: { reply: string; response?: CareResult | null; audio_base64?: string; audio_mime_type?: string } = await response.json();
+      if (message.response) setResult(message.response); setAgentReply(message.reply); setInput("");
+      setConversation((items) => [...items, { role: "user", content: text }, { role: "assistant", content: message.reply }]);
+      playAgentAudio(message.audio_base64, message.audio_mime_type, message.reply);
     } catch (error) { setState(error instanceof Error ? error.message : "Please try again."); } finally { setBusy(false); }
   }
   async function sendText(event: FormEvent) { event.preventDefault(); if (input.trim() && !busy) await requestCare(input); }

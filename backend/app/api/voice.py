@@ -2,14 +2,26 @@
 
 import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 
 from app.api.care import pipeline
 from app.config import settings
-from app.schemas.care import CareRequest, CareResponse, Language, Location
+from app.core.voice_agent import conversational_reply, general_reply, resolved_language, route_from_understanding, understand_voice_turn
+from app.schemas.care import CareRequest, CareResponse, ConversationTurn, Language, Location
 
 
 router = APIRouter(prefix="/api/v1/voice", tags=["voice"])
 SARVAM_BASE_URL = "https://api.sarvam.ai"
+
+
+class AgentMessage(BaseModel):
+    """A text turn for the same Sarvam conversation used by the voice agent."""
+
+    text: str = Field(min_length=1, max_length=4000)
+    conversation_history: list[ConversationTurn] = Field(default_factory=list)
+    language: Language = Language.AUTO
+    lat: float = 28.545
+    lng: float = 77.192
 
 
 async def _sarvam_audio_reply(text: str, language_code: str) -> str | None:
@@ -47,6 +59,34 @@ async def speak_reply(payload: dict[str, str]) -> dict[str, str | None]:
         raise HTTPException(status_code=400, detail="Text is required.")
     audio = await _sarvam_audio_reply(text, payload.get("language_code", "en-IN"))
     return {"audio_base64": audio, "audio_mime_type": "audio/wav" if audio else None}
+
+
+@router.post("/chat")
+async def chat_with_agent(payload: AgentMessage) -> dict[str, object]:
+    """Run typed and spoken conversation through Sarvam, not local response templates."""
+    text = payload.text.strip()
+    request = CareRequest(
+        user_input=text,
+        language=payload.language,
+        location=Location(lat=payload.lat, lng=payload.lng),
+        conversation_history=payload.conversation_history,
+    )
+    provisional = pipeline.run(request)
+    decision = await understand_voice_turn(payload.conversation_history, text)
+    has_care_turn = bool(decision and (decision.care_type or decision.follow_up_question or decision.symptom_summary))
+    result = route_from_understanding(provisional, decision, request, payload.language) if has_care_turn else None
+    reply = (
+        await conversational_reply(payload.conversation_history, text, result, payload.language)
+        if result else await general_reply(payload.conversation_history, text)
+    )
+    language = resolved_language(decision.language, payload.language) if decision else payload.language
+    audio = await _sarvam_audio_reply(reply, "hi-IN" if language == Language.HI else "en-IN")
+    return {
+        "reply": reply,
+        "response": result.model_dump(mode="json") if result else None,
+        "audio_base64": audio,
+        "audio_mime_type": "audio/wav" if audio else None,
+    }
 
 
 @router.post("/respond")

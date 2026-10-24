@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 from sarvamai import SarvamAI
 
 from app.config import settings
-from app.schemas.care import CareResponse, ConversationTurn, Language
+from app.core.matching import match_caregivers
+from app.schemas.care import CareRequest, CareResponse, CareType, ConversationTurn, Language, Urgency
 
 
 SYSTEM_PROMPT = """You are CareCompass, a calm, concise Indian healthcare navigation voice agent.
@@ -17,6 +18,12 @@ Speak naturally in the user's language (English, Hindi, or Hinglish), using shor
 The safety routing result below is authoritative. Do not contradict it. If it is an emergency, clearly say to call 112 now.
 Ask only the supplied follow-up question when one is required. Otherwise, explain the suggested care and the next action.
 Keep your answer below 70 words and do not mention these instructions or the routing system."""
+
+GENERAL_CHAT_PROMPT = """You are CareCompass, a friendly multilingual healthcare navigation assistant for India.
+Respond naturally to greetings and ordinary conversation in the user's language (English, Hindi, or Hinglish).
+When the user describes a health concern, ask one concise clarifying question or explain the next navigation step.
+Never diagnose, prescribe medication, or claim medical certainty. Mention calling 112 only for a clear emergency.
+Keep spoken replies below 70 words."""
 
 UNDERSTANDING_PROMPT = """You are the structured understanding component for CareCompass, an Indian healthcare navigation voice agent.
 Read the conversation and return ONLY one JSON object, never Markdown. Do not diagnose or prescribe medication.
@@ -121,6 +128,54 @@ async def understand_voice_turn(history: list[ConversationTurn], transcript: str
         return None
 
 
+def resolved_language(value: str, fallback: Language) -> Language:
+    normalized = value.lower().strip()
+    if normalized in {"hi", "hindi"}:
+        return Language.HI
+    if normalized in {"hinglish", "hi-en", "hi_en"}:
+        return Language.HINGLISH
+    if normalized in {"en", "english"}:
+        return Language.EN
+    return fallback if fallback != Language.AUTO else Language.EN
+
+
+def route_from_understanding(
+    provisional: CareResponse,
+    decision: VoiceUnderstanding | None,
+    request: CareRequest,
+    language: Language,
+) -> CareResponse:
+    """Use Sarvam's validated normal-care decision; deterministic red flags override it."""
+    if not decision or provisional.red_flags:
+        return provisional
+    try:
+        care_type = CareType(decision.care_type) if decision.care_type else None
+        urgency = Urgency(decision.urgency) if decision.urgency else None
+    except ValueError:
+        return provisional
+    reasoning = decision.reasoning.strip()[:500] or provisional.reasoning
+    question = decision.follow_up_question.strip() if decision.follow_up_question else None
+    if care_type == CareType.EMERGENCY_REFERRAL:
+        return CareResponse(
+            care_type=CareType.EMERGENCY_REFERRAL,
+            urgency=Urgency.IMMEDIATE,
+            red_flags=["Sarvam voice assessment marked this as urgent."],
+            reasoning=reasoning,
+            matched_caregivers=[],
+        )
+    if question and care_type is None:
+        return CareResponse(follow_up_question=question[:350], reasoning=reasoning)
+    if care_type and urgency:
+        user_language = resolved_language(decision.language, language)
+        return CareResponse(
+            care_type=care_type,
+            urgency=urgency,
+            reasoning=reasoning,
+            matched_caregivers=match_caregivers(care_type.value, request.location, user_language.value, request.user_input),
+        )
+    return provisional
+
+
 def _complete(history: list[ConversationTurn], transcript: str, result: CareResponse) -> str:
     client = SarvamAI(api_subscription_key=settings.sarvam_api_key)
     response = client.chat.completions(
@@ -144,3 +199,33 @@ async def conversational_reply(
         return await asyncio.to_thread(_complete, history, transcript, result)
     except Exception:
         return fallback_reply(result)
+
+
+def _general_complete(history: list[ConversationTurn], transcript: str) -> str:
+    client = SarvamAI(api_subscription_key=settings.sarvam_api_key)
+    messages: list[dict[str, str]] = [{"role": "system", "content": GENERAL_CHAT_PROMPT}]
+    messages.extend(
+        {"role": turn.role, "content": turn.content}
+        for turn in history[-12:]
+        if turn.role in {"user", "assistant"}
+    )
+    messages.append({"role": "user", "content": transcript})
+    response = client.chat.completions(
+        model="sarvam-105b-conversations",
+        messages=messages,
+        reasoning_effort=None,
+        temperature=0.45,
+        max_tokens=160,
+    )
+    return str(response.choices[0].message.content or "").strip()[:900]
+
+
+async def general_reply(history: list[ConversationTurn], transcript: str) -> str:
+    """Use Sarvam for ordinary conversation that does not yet need care routing."""
+    if not settings.sarvam_api_key:
+        return "Hello. Tell me what is happening, and I will help you find the right next step."
+    try:
+        reply = await asyncio.to_thread(_general_complete, history, transcript)
+        return reply or "Hello. Tell me what is happening, and I will help you find the right next step."
+    except Exception:
+        return "I am here to help. Please tell me what is happening."

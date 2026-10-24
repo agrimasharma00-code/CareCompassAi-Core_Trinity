@@ -73,7 +73,7 @@ def detect_language(text: str) -> str:
 
 
 def extract_facts(text: str, requested_language: Language) -> IntakeFacts:
-    """Use rules first, then optionally allow the adapter to enrich missing fields."""
+    """Extract deterministic safety facts; Sarvam enrichment occurs in voice_agent.py."""
     language = detect_language(text) if requested_language == Language.AUTO else requested_language.value
     lower = text.lower()
     duration_match = re.search(r"\b(\d+\s*(?:days?|din)|do\s+din|ek\s+din|kal\s+se|since\s+yesterday)\b", lower)
@@ -92,8 +92,9 @@ def extract_facts(text: str, requested_language: Language) -> IntakeFacts:
         relation=relation_match.group(1) if relation_match else None,
         requested_service=service,
     )
-    llm_facts = SarvamExtractor().extract(text)
-    return llm_facts or rule_facts
+    # Do not invoke the deprecated legacy extractor here. The active voice/chat route
+    # performs one validated Sarvam 105B structured-understanding call per turn.
+    return rule_facts
 
 
 def next_follow_up(
