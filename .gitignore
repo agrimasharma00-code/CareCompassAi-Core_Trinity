@@ -8,3 +8,4 @@ backend/models/*
 backend/eval/predictions.csv
 frontend/node_modules/
 frontend/.next/
+*.tsbuildinfo
