@@ -1,0 +1,13 @@
+{
+  "labels": [
+    "chest_pain",
+    "breathlessness",
+    "unconsciousness",
+    "severe_bleeding",
+    "stroke_symptoms",
+    "seizure",
+    "high_fever_infant",
+    "suicidal_ideation",
+    "severe_dehydration"
+  ]
+}

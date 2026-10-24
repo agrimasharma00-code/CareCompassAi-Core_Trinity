@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+!.env.local.example
+node_modules/
+.next/
+out/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+models/*.joblib
+backend/models/*.joblib
