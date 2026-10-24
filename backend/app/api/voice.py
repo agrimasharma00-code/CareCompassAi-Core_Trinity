@@ -16,12 +16,15 @@ async def _sarvam_audio_reply(text: str, language_code: str) -> str | None:
     """Synthesize a short route summary; TTS failure must not block routing."""
     if not settings.sarvam_api_key:
         return None
+    is_hindi = language_code == "hi-IN"
     payload = {
         "text": text[:2500],
-        "language_code": language_code if language_code in {"en-IN", "hi-IN"} else "en-IN",
+        "language_code": "hi-IN" if is_hindi else "en-IN",
         "model": "bulbul:v4-flash",
         "output_audio_codec": "wav",
-        "speaker": "anushka",
+        # v4 Flash requires persona IDs; the old v2 name "anushka" returns 400.
+        "speaker": "aparna_hi_customer" if is_hindi else "simran_enhi_customer",
+        "pace": 1.0,
     }
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
