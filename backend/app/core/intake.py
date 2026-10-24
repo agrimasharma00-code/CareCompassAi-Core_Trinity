@@ -48,5 +48,10 @@ def prepare(request):
         context = _slot_context(previous, request.user_input)
         triage_text = normalize_text(" ".join([request.user_input, context]))
         language_text = request.user_input
-    safety_text = joined
-    return triage_text, detect_language(language_text), safety_text
+    # Keep the original Unicode marks for red-flag matching (normalization can
+    # discard Devanagari vowel marks); safety checks scan every user turn.
+    safety_text = " ".join(previous + [request.user_input])
+    detected_language = detect_language(language_text)
+    if str(getattr(request, "language", "auto")).lower().startswith("hi"):
+        detected_language = "Hindi"
+    return triage_text, detected_language, safety_text

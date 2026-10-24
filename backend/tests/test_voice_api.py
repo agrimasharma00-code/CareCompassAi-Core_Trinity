@@ -9,6 +9,9 @@ from pydantic import ValidationError
 
 from app.api import voice
 from app.integrations import sarvam_client
+from app.core.pipeline import run
+from app.core.intake import prepare
+from app.schemas.care import IntakeRequest, Location
 
 
 def run_stt(coroutine):
@@ -51,6 +54,38 @@ def test_stt_endpoint_uses_sarvam_transcribe_and_returns_language(monkeypatch):
     assert seen["filename"] == "request.wav" and seen["data"].startswith(b"RIFF")
 
 
+def test_transcribe_uses_configured_mode_and_auto_language(monkeypatch):
+    class Speech:
+        def transcribe(self, **kwargs):
+            seen.update(kwargs)
+            return type("Response", (), {"transcript": "पापा को दो दिन से bukhar है", "language_code": "hi-IN"})()
+
+    class Client:
+        speech_to_text = Speech()
+
+    from types import SimpleNamespace
+    seen = {}
+    monkeypatch.setattr(sarvam_client, "_client", lambda: Client())
+    monkeypatch.setattr(sarvam_client, "get_settings", lambda: SimpleNamespace(sarvam_stt_model="saaras:v4", sarvam_stt_mode="codemix", sarvam_timeout_s=6, sarvam_api_key=""))
+    result = sarvam_client.transcribe(wav_bytes(), "request.wav")
+    assert str(result) == "पापा को दो दिन से bukhar है"
+    assert result.language_code == "hi-IN"
+    assert seen["mode"] == "codemix" and seen["language_code"] == "unknown"
+
+
+@pytest.mark.parametrize("transcript", ["पापा को दो दिन से बुखार है", "पापा को दो दिन से bukhar है"])
+def test_hindi_stt_transcripts_reach_pipeline_unchanged(monkeypatch, transcript):
+    monkeypatch.setattr(sarvam_client, "is_configured", lambda: True)
+    monkeypatch.setattr(sarvam_client, "transcribe", lambda data, filename: sarvam_client.Transcription(transcript, "hi-IN"))
+    payload = run_stt(voice.stt(FakeUpload(wav_bytes())))
+    assert payload == {"transcript": transcript, "language_code": "hi-IN"}
+    request = IntakeRequest(user_input=payload["transcript"], language=payload["language_code"], location=Location(lat=28.54, lng=77.27))
+    prepared, language, _ = prepare(request)
+    assert request.user_input == transcript
+    assert language == "Hindi"
+    assert run(request)["care_type"] == "paramedic_home_visit"
+
+
 def test_stt_rejects_invalid_wav(monkeypatch):
     monkeypatch.setattr(sarvam_client, "is_configured", lambda: True)
     with pytest.raises(HTTPException) as err:
@@ -79,5 +114,21 @@ def test_tts_returns_wav_and_passes_language(monkeypatch):
 def test_tts_caps_text_at_500_characters():
     with pytest.raises(ValidationError):
         voice.TTSRequest(text="x" * 501, language="en-IN")
+
+
+def test_sarvam_default_tts_voice_is_priya(monkeypatch):
+    from types import SimpleNamespace
+    seen = {}
+
+    class TTS:
+        def convert(self, **kwargs):
+            seen.update(kwargs)
+            return SimpleNamespace(audios=["aGVsbG8="])
+
+    monkeypatch.setattr(sarvam_client, "_client", lambda: SimpleNamespace(text_to_speech=TTS()))
+    monkeypatch.setattr(sarvam_client, "get_settings", lambda: SimpleNamespace(sarvam_tts_model="bulbul:v4-flash", sarvam_tts_speaker="", sarvam_timeout_s=6))
+    monkeypatch.setattr(sarvam_client, "_retry", lambda fn: (fn(), None))
+    assert sarvam_client.speak("नमस्ते", "Hindi") == b"hello"
+    assert seen["speaker"] == "priya_hi_recovery"
 
 

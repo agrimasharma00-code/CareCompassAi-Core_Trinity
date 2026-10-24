@@ -4,7 +4,8 @@ HINDI_MARKERS={"ko","hai","nahi","mein","se","chahiye","karna","ghar","ka","ki",
 def normalize_text(text):
  text=unicodedata.normalize("NFKC",text.lower())
  for a,b in VARIANTS.items(): text=re.sub(rf"\b{a}\b",b,text)
- return re.sub(r"[^\w\s]"," ",text,flags=re.UNICODE).strip()
+ # Preserve Devanagari combining vowel marks; Python's \w excludes them.
+ return re.sub(r"[^\w\s\u0900-\u097f]"," ",text,flags=re.UNICODE).strip()
 def history_text(history,current):
  parts=[]
  for item in history or []:

@@ -1,0 +1,341 @@
+id,care_type,urgency,red_flags,follow_up_question,matched_caregiver_ids,top_score
+0,home_nursing,same_day,,,,
+1,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+2,home_nursing,same_day,,,CG_016,0.98
+3,emergency_112,emergency,severe_bleeding,,,
+4,home_nursing,same_day,,,CG_060,0.84
+5,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+6,home_nursing,same_day,,,,
+7,emergency_112,emergency,unconsciousness,,,
+8,home_nursing,same_day,,,CG_026;CG_010;CG_042,0.87
+9,home_nursing,same_day,,,CG_035,0.69
+10,paramedic_home_visit,same_day,,,CG_026;CG_010;CG_042,0.85
+11,lab_test_home,scheduled,,,,
+12,home_nursing,same_day,,,CG_035;CG_014;CG_052,0.91
+13,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+14,emergency_112,emergency,severe_bleeding,,,
+15,emergency_112,emergency,chest_pain;breathlessness,,,
+16,lab_test_home,scheduled,,,,
+17,,,,"ज़रूर। कृपया मुख्य परेशानी या सेवा बताएं (घर पर जांच, नर्सिंग, लैब टेस्ट या डॉक्टर से बात)?",,
+18,,,,"ज़रूर। कृपया मुख्य परेशानी या सेवा बताएं (घर पर जांच, नर्सिंग, लैब टेस्ट या डॉक्टर से बात)?",,
+19,home_nursing,same_day,,,CG_060,0.8
+20,lab_test_home,scheduled,,,,
+21,home_nursing,same_day,,,,
+22,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+23,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+24,paramedic_home_visit,same_day,,,CG_050;CG_038,0.83
+25,paramedic_home_visit,same_day,,,,
+26,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+27,home_nursing,same_day,,,CG_042,0.84
+28,lab_test_home,scheduled,,,CG_006,0.86
+29,home_nursing,same_day,,,CG_026;CG_010;CG_042,0.83
+30,home_nursing,same_day,,,,
+31,emergency_112,emergency,severe_bleeding,,,
+32,home_nursing,same_day,,,,
+33,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+34,lab_test_home,scheduled,,,CG_054;CG_011;CG_023,0.85
+35,home_nursing,same_day,,,,
+36,home_nursing,same_day,,,CG_050;CG_038;CG_041,0.78
+37,home_nursing,same_day,,,CG_035;CG_052;CG_014,0.85
+38,home_nursing,same_day,,,CG_014;CG_019,0.9
+39,lab_test_home,scheduled,,,CG_023,0.6
+40,lab_test_home,scheduled,,,CG_006,0.81
+41,paramedic_home_visit,same_day,,,,
+42,lab_test_home,scheduled,,,CG_011;CG_055;CG_022,0.69
+43,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+44,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+45,home_nursing,same_day,,,CG_042,0.74
+46,emergency_112,emergency,severe_bleeding,,,
+47,home_nursing,same_day,,,,
+48,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+49,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+50,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+51,lab_test_home,scheduled,,,CG_006,0.95
+52,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+53,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+54,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+55,paramedic_home_visit,same_day,,,CG_016;CG_028;CG_015,0.88
+56,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+57,home_nursing,same_day,,,CG_028;CG_016;CG_032,0.97
+58,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+59,home_nursing,same_day,,,CG_014;CG_019,0.72
+60,lab_test_home,scheduled,,,CG_005;CG_054;CG_023,0.81
+61,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+62,home_nursing,same_day,,,,
+63,,,,"ज़रूर। कृपया मुख्य परेशानी या सेवा बताएं (घर पर जांच, नर्सिंग, लैब टेस्ट या डॉक्टर से बात)?",,
+64,emergency_112,emergency,chest_pain;breathlessness,,,
+65,lab_test_home,scheduled,,,CG_023;CG_018,0.76
+66,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+67,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+68,paramedic_home_visit,same_day,,,CG_016,0.7
+69,home_nursing,same_day,,,CG_052;CG_020;CG_035,0.93
+70,home_nursing,same_day,,,,
+71,home_nursing,same_day,,,CG_057;CG_050;CG_038,0.97
+72,lab_test_home,scheduled,,,CG_004,0.73
+73,home_nursing,same_day,,,CG_050;CG_038;CG_057,0.87
+74,emergency_112,emergency,chest_pain;breathlessness,,,
+75,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+76,home_nursing,same_day,,,CG_016,0.88
+77,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+78,lab_test_home,scheduled,,,,
+79,home_nursing,same_day,,,,
+80,lab_test_home,scheduled,,,,
+81,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+82,lab_test_home,scheduled,,,,
+83,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+84,emergency_112,emergency,severe_bleeding,,,
+85,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+86,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+87,emergency_112,emergency,chest_pain;breathlessness,,,
+88,paramedic_home_visit,same_day,,,CG_034,0.68
+89,emergency_112,emergency,unconsciousness,,,
+90,emergency_112,emergency,severe_bleeding,,,
+91,emergency_112,emergency,unconsciousness,,,
+92,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+93,emergency_112,emergency,chest_pain;breathlessness,,,
+94,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+95,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+96,paramedic_home_visit,same_day,,,CG_026;CG_010;CG_042,0.86
+97,lab_test_home,scheduled,,,CG_004,0.76
+98,paramedic_home_visit,same_day,,,CG_019;CG_014;CG_046,0.82
+99,home_nursing,same_day,,,CG_038;CG_041;CG_050,0.8
+100,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+101,paramedic_home_visit,same_day,,,CG_050;CG_038;CG_041,0.78
+102,paramedic_home_visit,same_day,,,CG_060,0.59
+103,home_nursing,same_day,,,CG_016;CG_015;CG_028,0.85
+104,home_nursing,same_day,,,CG_014;CG_019;CG_046,0.74
+105,emergency_112,emergency,unconsciousness,,,
+106,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+107,home_nursing,same_day,,,,
+108,lab_test_home,scheduled,,,CG_044;CG_025;CG_006,0.77
+109,paramedic_home_visit,same_day,,,CG_034,0.83
+110,emergency_112,emergency,unconsciousness,,,
+111,home_nursing,same_day,,,CG_034,0.74
+112,home_nursing,same_day,,,CG_020;CG_052;CG_035,0.83
+113,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+114,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+115,lab_test_home,scheduled,,,CG_044;CG_025,0.85
+116,paramedic_home_visit,same_day,,,CG_033;CG_060;CG_032,0.72
+117,emergency_112,emergency,unconsciousness,,,
+118,home_nursing,same_day,,,CG_010;CG_026;CG_042,0.77
+119,emergency_112,emergency,severe_bleeding,,,
+120,lab_test_home,scheduled,,,CG_055;CG_011,0.75
+121,home_nursing,same_day,,,,
+122,lab_test_home,scheduled,,,CG_055;CG_011;CG_022,0.7
+123,home_nursing,same_day,,,CG_014;CG_019,0.89
+124,,,,"ज़रूर। कृपया मुख्य परेशानी या सेवा बताएं (घर पर जांच, नर्सिंग, लैब टेस्ट या डॉक्टर से बात)?",,
+125,home_nursing,same_day,,,,
+126,emergency_112,emergency,severe_bleeding,,,
+127,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+128,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+129,lab_test_home,scheduled,,,CG_004,0.86
+130,emergency_112,emergency,chest_pain;breathlessness,,,
+131,emergency_112,emergency,chest_pain;breathlessness,,,
+132,home_nursing,same_day,,,,
+133,emergency_112,emergency,chest_pain;breathlessness,,,
+134,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+135,home_nursing,same_day,,,CG_020;CG_052;CG_035,0.85
+136,lab_test_home,scheduled,,,CG_044;CG_025,0.87
+137,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+138,lab_test_home,scheduled,,,CG_018;CG_023,0.77
+139,home_nursing,same_day,,,CG_014;CG_019,0.85
+140,emergency_112,emergency,severe_bleeding,,,
+141,lab_test_home,scheduled,,,CG_011;CG_055;CG_022,0.69
+142,paramedic_home_visit,same_day,,,CG_019;CG_014;CG_046,0.85
+143,home_nursing,same_day,,,CG_019;CG_014;CG_038,0.75
+144,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+145,emergency_112,emergency,chest_pain;breathlessness,,,
+146,paramedic_home_visit,same_day,,,CG_050;CG_038,0.78
+147,home_nursing,same_day,,,CG_035;CG_014;CG_028,0.78
+148,home_nursing,same_day,,,CG_033;CG_048;CG_032,0.84
+149,paramedic_home_visit,same_day,,,,
+150,,,,"ज़रूर। कृपया मुख्य परेशानी या सेवा बताएं (घर पर जांच, नर्सिंग, लैब टेस्ट या डॉक्टर से बात)?",,
+151,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+152,lab_test_home,scheduled,,,CG_006,0.84
+153,home_nursing,same_day,,,CG_048;CG_033;CG_032,0.87
+154,lab_test_home,scheduled,,,,
+155,lab_test_home,scheduled,,,CG_011;CG_022;CG_055,0.7
+156,emergency_112,emergency,severe_bleeding,,,
+157,paramedic_home_visit,same_day,,,CG_020;CG_052;CG_035,0.83
+158,home_nursing,same_day,,,CG_050;CG_038,0.9
+159,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+160,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+161,paramedic_home_visit,same_day,,,CG_010;CG_026;CG_042,0.74
+162,home_nursing,same_day,,,CG_050;CG_038,0.88
+163,paramedic_home_visit,same_day,,,CG_026;CG_010;CG_042,0.82
+164,paramedic_home_visit,same_day,,,,
+165,home_nursing,same_day,,,CG_016;CG_033;CG_048,0.78
+166,emergency_112,emergency,chest_pain;breathlessness,,,
+167,home_nursing,same_day,,,,
+168,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+169,home_nursing,same_day,,,CG_019;CG_014,0.88
+170,lab_test_home,scheduled,,,,
+171,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+172,emergency_112,emergency,unconsciousness,,,
+173,home_nursing,same_day,,,CG_019;CG_014;CG_046,0.85
+174,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+175,paramedic_home_visit,same_day,,,CG_033;CG_032;CG_035,0.68
+176,home_nursing,same_day,,,,
+177,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+178,home_nursing,same_day,,,,
+179,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+180,home_nursing,same_day,,,CG_048;CG_032;CG_016,0.94
+181,home_nursing,same_day,,,CG_050;CG_038,0.88
+182,paramedic_home_visit,same_day,,,CG_032;CG_033;CG_048,0.82
+183,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+184,lab_test_home,scheduled,,,CG_022;CG_011;CG_054,0.8
+185,paramedic_home_visit,same_day,,,CG_010;CG_026;CG_042,0.8
+186,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+187,home_nursing,same_day,,,,
+188,home_nursing,same_day,,,CG_060,0.74
+189,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+190,home_nursing,same_day,,,,
+191,emergency_112,emergency,chest_pain;breathlessness,,,
+192,home_nursing,same_day,,,,
+193,home_nursing,same_day,,,CG_050;CG_038;CG_057,0.91
+194,home_nursing,same_day,,,CG_038;CG_041;CG_050,0.8
+195,emergency_112,emergency,unconsciousness,,,
+196,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+197,home_nursing,same_day,,,,
+198,home_nursing,same_day,,,,
+199,home_nursing,same_day,,,CG_048;CG_032;CG_016,0.92
+200,emergency_112,emergency,severe_bleeding,,,
+201,home_nursing,same_day,,,,
+202,paramedic_home_visit,same_day,,,CG_050;CG_038,0.86
+203,paramedic_home_visit,same_day,,,CG_052;CG_020;CG_035,0.82
+204,lab_test_home,scheduled,,,CG_043,0.76
+205,home_nursing,same_day,,,CG_050;CG_038,0.93
+206,emergency_112,emergency,severe_bleeding,,,
+207,paramedic_home_visit,same_day,,,,
+208,lab_test_home,scheduled,,,,
+209,paramedic_home_visit,same_day,,,CG_016;CG_015;CG_024,0.83
+210,paramedic_home_visit,same_day,,,CG_038;CG_041;CG_050,0.79
+211,emergency_112,emergency,severe_bleeding,,,
+212,home_nursing,same_day,,,,
+213,emergency_112,emergency,chest_pain;breathlessness,,,
+214,lab_test_home,scheduled,,,,
+215,home_nursing,same_day,,,CG_019;CG_014,0.92
+216,,,,"ज़रूर। कृपया मुख्य परेशानी या सेवा बताएं (घर पर जांच, नर्सिंग, लैब टेस्ट या डॉक्टर से बात)?",,
+217,home_nursing,same_day,,,CG_014;CG_019,0.82
+218,home_nursing,same_day,,,CG_026;CG_010;CG_060,0.99
+219,home_nursing,same_day,,,,
+220,emergency_112,emergency,unconsciousness,,,
+221,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+222,lab_test_home,scheduled,,,,
+223,paramedic_home_visit,same_day,,,,
+224,emergency_112,emergency,chest_pain;breathlessness,,,
+225,paramedic_home_visit,same_day,,,CG_033;CG_016;CG_048,0.76
+226,home_nursing,same_day,,,CG_019;CG_014,0.91
+227,lab_test_home,scheduled,,,CG_044;CG_025,0.96
+228,paramedic_home_visit,same_day,,,CG_020;CG_052;CG_035,0.84
+229,home_nursing,same_day,,,CG_033;CG_032;CG_028,0.72
+230,home_nursing,same_day,,,,
+231,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+232,lab_test_home,scheduled,,,CG_022;CG_011;CG_054,0.83
+233,home_nursing,same_day,,,CG_014,0.75
+234,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+235,emergency_112,emergency,unconsciousness,,,
+236,home_nursing,same_day,,,CG_020;CG_052;CG_035,0.89
+237,lab_test_home,scheduled,,,,
+238,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+239,lab_test_home,scheduled,,,CG_022;CG_011;CG_054,0.87
+240,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+241,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+242,emergency_112,emergency,severe_bleeding,,,
+243,,,,"ज़रूर। कृपया मुख्य परेशानी या सेवा बताएं (घर पर जांच, नर्सिंग, लैब टेस्ट या डॉक्टर से बात)?",,
+244,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+245,home_nursing,same_day,,,CG_050;CG_057;CG_038,0.91
+246,home_nursing,same_day,,,CG_050;CG_038,0.85
+247,home_nursing,same_day,,,CG_050;CG_038;CG_041,0.86
+248,emergency_112,emergency,unconsciousness,,,
+249,paramedic_home_visit,same_day,,,CG_015;CG_024;CG_028,0.86
+250,emergency_112,emergency,severe_bleeding,,,
+251,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+252,emergency_112,emergency,severe_bleeding,,,
+253,emergency_112,emergency,severe_bleeding,,,
+254,emergency_112,emergency,unconsciousness,,,
+255,paramedic_home_visit,same_day,,,CG_015;CG_028;CG_016,0.84
+256,,,,"ज़रूर। कृपया मुख्य परेशानी या सेवा बताएं (घर पर जांच, नर्सिंग, लैब टेस्ट या डॉक्टर से बात)?",,
+257,emergency_112,emergency,chest_pain;breathlessness,,,
+258,paramedic_home_visit,same_day,,,,
+259,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+260,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+261,home_nursing,same_day,,,CG_016;CG_028;CG_032,0.92
+262,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+263,paramedic_home_visit,same_day,,,CG_016,0.81
+264,home_nursing,same_day,,,,
+265,home_nursing,same_day,,,CG_050;CG_038;CG_041,0.75
+266,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+267,home_nursing,same_day,,,,
+268,emergency_112,emergency,unconsciousness,,,
+269,emergency_112,emergency,severe_bleeding,,,
+270,lab_test_home,scheduled,,,,
+271,lab_test_home,scheduled,,,CG_043,0.82
+272,home_nursing,same_day,,,CG_033;CG_048;CG_016,0.77
+273,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+274,emergency_112,emergency,unconsciousness,,,
+275,home_nursing,same_day,,,CG_060,0.69
+276,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+277,emergency_112,emergency,severe_bleeding,,,
+278,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+279,home_nursing,same_day,,,CG_026;CG_010;CG_042,0.81
+280,lab_test_home,scheduled,,,,
+281,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+282,emergency_112,emergency,unconsciousness,,,
+283,emergency_112,emergency,chest_pain;breathlessness,,,
+284,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+285,lab_test_home,scheduled,,,CG_044;CG_025,0.89
+286,paramedic_home_visit,same_day,,,CG_033;CG_060;CG_032,0.7
+287,home_nursing,same_day,,,CG_015;CG_024;CG_028,0.83
+288,home_nursing,same_day,,,CG_016;CG_028;CG_015,0.84
+289,home_nursing,same_day,,,,
+290,emergency_112,emergency,chest_pain;breathlessness,,,
+291,paramedic_home_visit,same_day,,,CG_034,0.79
+292,lab_test_home,scheduled,,,CG_054;CG_005;CG_023,0.78
+293,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+294,home_nursing,same_day,,,CG_014,0.75
+295,emergency_112,emergency,unconsciousness,,,
+296,paramedic_home_visit,same_day,,,CG_033;CG_048;CG_032,0.8
+297,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+298,lab_test_home,scheduled,,,,
+299,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+300,paramedic_home_visit,same_day,,,CG_016,0.8
+301,home_nursing,same_day,,,CG_034,0.75
+302,home_nursing,same_day,,,CG_016;CG_028;CG_032,0.99
+303,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+304,lab_test_home,scheduled,,,,
+305,emergency_112,emergency,chest_pain;breathlessness,,,
+306,lab_test_home,scheduled,,,,
+307,paramedic_home_visit,same_day,,,,
+308,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+309,emergency_112,emergency,unconsciousness,,,
+310,home_nursing,same_day,,,,
+311,home_nursing,same_day,,,CG_052;CG_020;CG_035,0.94
+312,emergency_112,emergency,unconsciousness,,,
+313,home_nursing,same_day,,,CG_014,0.71
+314,lab_test_home,scheduled,,,CG_043,0.84
+315,home_nursing,same_day,,,,
+316,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+317,home_nursing,same_day,,,CG_042,0.87
+318,lab_test_home,scheduled,,,CG_044;CG_025,0.86
+319,lab_test_home,scheduled,,,,
+320,lab_test_home,scheduled,,,CG_004,0.82
+321,lab_test_home,scheduled,,,,
+322,teleconsultation,same_day,,,CG_021;CG_030;CG_003,0.9
+323,home_nursing,same_day,,,CG_035;CG_014;CG_033,0.8
+324,home_nursing,same_day,,,CG_060,0.71
+325,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+326,paramedic_home_visit,same_day,,,,
+327,,,,"ज़रूर। कृपया मुख्य परेशानी या सेवा बताएं (घर पर जांच, नर्सिंग, लैब टेस्ट या डॉक्टर से बात)?",,
+328,home_nursing,same_day,,,CG_050;CG_038,0.92
+329,paramedic_home_visit,same_day,,,CG_060,0.62
+330,,,,"Zaroor. Main symptom ya service bata sakte hain (home visit, nursing, lab test, ya doctor se baat)?",,
+331,teleconsultation,same_day,,,CG_012;CG_029;CG_037,0.89
+332,home_nursing,same_day,,,CG_060;CG_010;CG_033,0.67
+333,home_nursing,same_day,,,CG_060,0.78
+334,,,,"Happy to help. Could you tell me the main symptom or service you need (home visit, nursing, lab test, or teleconsult)?",,
+335,paramedic_home_visit,same_day,,,CG_060,0.7
+336,emergency_112,emergency,severe_bleeding,,,
+337,lab_test_home,scheduled,,,,
+338,home_nursing,same_day,,,CG_010;CG_042;CG_026,0.77
+339,emergency_112,emergency,chest_pain;breathlessness,,,

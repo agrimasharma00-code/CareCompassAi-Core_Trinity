@@ -518,3 +518,35 @@
 {"text": "papa ko hello koi hai?", "care_type": "followup", "source_text": "hello koi hai?"}
 {"text": "hello koi hai? chahiye", "care_type": "followup", "source_text": "hello koi hai?"}
 {"text": "can someone help, hello koi hai?", "care_type": "followup", "source_text": "hello koi hai?"}
+{"text": "I have a mild headache", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "My head has been aching today", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Mere sir mein halka dard hai", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Sir dard ho raha hai", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "मेरे सिर में हल्का दर्द है", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "सिर दर्द है, डॉक्टर से बात करनी है", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Please come home to check my headache", "care_type": "paramedic_home_visit", "source_text": "mummy ka bp sugar ghar pe check karwana hai"}
+{"text": "सिर दर्द है, घर पर देखने आ सकते हैं?", "care_type": "paramedic_home_visit", "source_text": "mummy ka bp sugar ghar pe check karwana hai"}
+{"text": "I have a mild stomach ache", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "My stomach hurts a little", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Pet mein halka dard hai", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Mere pet mein thoda dard hai", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "पेट में हल्का दर्द है", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "पेट में थोड़ा दर्द हो रहा है", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Please come home to check my stomach pain", "care_type": "paramedic_home_visit", "source_text": "mummy ka bp sugar ghar pe check karwana hai"}
+{"text": "पेट दर्द है, घर पर जांच कर दें", "care_type": "paramedic_home_visit", "source_text": "mummy ka bp sugar ghar pe check karwana hai"}
+{"text": "I have a mild cold", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "I have a runny nose and cold", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Mujhe halki sardi hai", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Mujhe zukham ho gaya hai", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "मुझे हल्की सर्दी है", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "जुकाम है, डॉक्टर से बात करनी है", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Please come home to check my cold", "care_type": "paramedic_home_visit", "source_text": "mummy ka bp sugar ghar pe check karwana hai"}
+{"text": "सर्दी है, घर पर देखने आ सकते हैं?", "care_type": "paramedic_home_visit", "source_text": "mummy ka bp sugar ghar pe check karwana hai"}
+{"text": "I have mild body aches", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "My body feels achy today", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Badan mein halka dard hai", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Mere shareer mein dard ho raha hai", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "मेरे बदन में हल्का दर्द है", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "शरीर में दर्द है, डॉक्टर से सलाह चाहिए", "care_type": "teleconsultation", "source_text": "Mild acidity and gas since morning, want to consult a doctor"}
+{"text": "Please come home to check my body aches", "care_type": "paramedic_home_visit", "source_text": "mummy ka bp sugar ghar pe check karwana hai"}
+{"text": "बदन दर्द है, घर पर देखने आ सकते हैं?", "care_type": "paramedic_home_visit", "source_text": "mummy ka bp sugar ghar pe check karwana hai"}

@@ -12,6 +12,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from app.core.loaders import load_dataset
 from app.core.normalize import normalize_text
 from app.core.triage import URGENCY,keyword_rule
+from app.core.red_flags import check as check_red_flags
 
 def data():
  rows=load_dataset(); X=[normalize_text(r["request"]["user_input"]) for r in rows]; y=[r["response"]["care_type"] or "followup" for r in rows]; groups=X
@@ -39,7 +40,10 @@ def main():
  for i,txt in enumerate(X):
   rule=keyword_rule(txt)
   if rule and rule!=prior[i] and confidence[i]<.65:prior[i]=rule
- urgency_y=np.array([URGENCY.get(c,"same_day") for c in y]); baseline=np.array([URGENCY.get(c,"same_day") for c in prior]);print("care_type macro-F1 (selected OOF head)",f1_score(y,chosen,average="macro",zero_division=0));print("care_type macro-F1 with keyword prior",f1_score(y,prior,average="macro",zero_division=0));print("logistic OOF macro-F1",f1_score(y,pred,average="macro",zero_division=0));print("calibrated SVC OOF macro-F1",f1_score(y,svc_oof,average="macro",zero_division=0));print("urgency model macro-F1",f1_score(urgency_y,ur_model,average="macro",zero_division=0));print("predicted care_type default-map urgency macro-F1",f1_score(urgency_y,baseline,average="macro",zero_division=0));print("confusion matrix\n",confusion_matrix(y,chosen,labels=sorted(set(y))));print("emergency recall",recall_score(y=="emergency_112",prior=="emergency_112",zero_division=0));print("under-triage count",sum((y=="emergency_112")&(prior!="emergency_112")))
+ safe_prior=prior.copy()
+ for i,txt in enumerate(X):
+  if check_red_flags(rows[i]["request"]["user_input"]):safe_prior[i]="emergency_112"
+ urgency_y=np.array([URGENCY.get(c,"same_day") for c in y]); baseline=np.array([URGENCY.get(c,"same_day") for c in safe_prior]);print("care_type macro-F1 (selected OOF head)",f1_score(y,chosen,average="macro",zero_division=0));print("care_type macro-F1 with keyword prior",f1_score(y,prior,average="macro",zero_division=0));print("care_type macro-F1 with keyword and red-flag rules",f1_score(y,safe_prior,average="macro",zero_division=0));print("logistic OOF macro-F1",f1_score(y,pred,average="macro",zero_division=0));print("calibrated SVC OOF macro-F1",f1_score(y,svc_oof,average="macro",zero_division=0));print("urgency model macro-F1",f1_score(urgency_y,ur_model,average="macro",zero_division=0));print("predicted care_type default-map urgency macro-F1",f1_score(urgency_y,baseline,average="macro",zero_division=0));print("confusion matrix\n",confusion_matrix(y,chosen,labels=sorted(set(y))));print("emergency recall after runtime red-flag rules",recall_score(y=="emergency_112",safe_prior=="emergency_112",zero_division=0));print("under-triage count after runtime red-flag rules",sum((y=="emergency_112")&(safe_prior!="emergency_112")))
  final_x=list(X); final_y=list(y); final_x.extend(normalize_text(a["text"]) for a in aug); final_y.extend(a["care_type"] for a in aug)
  if f1_score(y,svc_oof,average="macro",zero_division=0)>f1_score(y,pred,average="macro",zero_division=0):
   final=Pipeline([("features",make().named_steps["features"]),("clf",CalibratedClassifierCV(LinearSVC(class_weight="balanced"),cv=3))]);print("Selected calibrated LinearSVC by group-split care macro-F1")

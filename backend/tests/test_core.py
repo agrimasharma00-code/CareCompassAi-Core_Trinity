@@ -3,6 +3,7 @@ from app.core.pipeline import run
 from app.schemas.care import IntakeRequest, IntakeResponse
 from app.core import matching
 from app.integrations import sarvam_client
+from app.core import pipeline
 from pydantic import BaseModel
 
 def req(text, history=None):
@@ -30,6 +31,32 @@ def test_symptom_negation_is_direct_and_correct():
     assert "unconsciousness" in check("gir gaye response nahi de rahe")
     assert "breathlessness" not in check("saans ki dikkat nahi hai")
     assert "chest_pain" not in check("no chest pain")
+    assert "chest_pain" not in check("mere sar mein dard hai")
+    assert "chest_pain" not in check("पेट में दर्द है")
+
+def test_headache_mild_stomach_and_chest_routing():
+    for phrase in ("मेरे सिर में दर्द है", "mere sir mein dard hai"):
+        assert run(req(phrase))["care_type"] != "emergency_112"
+    out=run(req("पापा को तेज सीने में दर्द है"))
+    assert out["care_type"]=="emergency_112" and "chest_pain" in out["red_flags"]
+    assert run(req("mere sir mein dard hai, ghar pe dikhana hai"))["care_type"]=="paramedic_home_visit"
+    assert run(req("acidity hai, doctor se consult karna hai"))["care_type"]=="teleconsultation"
+    assert "stroke_symptoms" in check("sudden worst headache with weakness")
+    assert "stroke_symptoms" not in check("I have a headache")
+
+def test_model_only_emergency_is_screened_then_resolved(monkeypatch):
+    class RiskModel:
+        def predict(self,text):
+            return "teleconsultation",.7,{"emergency_112":.8,"teleconsultation":.2}
+        def predict_urgency(self,text,care): return "same_day"
+    monkeypatch.setattr(pipeline,"_model",RiskModel())
+    first=run(req("I feel unwell"))
+    assert first["follow_up_question"]=="Is there chest pain, difficulty breathing, fainting or confusion?"
+    history=[{"role":"assistant","follow_up_question":first["follow_up_question"]}]
+    yes=run(req("haan",history))
+    assert yes["care_type"]=="emergency_112"
+    no=run(req("nahi",history))
+    assert no["care_type"]!="emergency_112"
 
 def test_emergency_response_has_no_matches_and_valid_contract():
     out = IntakeResponse.model_validate(run(req("chest pain ho raha hai papa ko")))

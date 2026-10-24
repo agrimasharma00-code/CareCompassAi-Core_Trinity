@@ -113,7 +113,12 @@ def transcribe(data: bytes, filename: str) -> str | None:
         if not client:
             return None
         import io
-        response, _error = _retry(lambda: client.speech_to_text.transcribe(file=(filename, io.BytesIO(data)), model=get_settings().sarvam_stt_model, mode="transcribe"))
+        cfg = get_settings()
+        # Sarvam's SDK supports language_code; "unknown" requests auto-detection.
+        # Keep mode configurable, and never use translate for intake speech.
+        response, _error = _retry(lambda: client.speech_to_text.transcribe(
+            file=(filename, io.BytesIO(data)), model=cfg.sarvam_stt_model,
+            mode=cfg.sarvam_stt_mode, language_code="unknown"))
         if not response:
             return None
         text = getattr(response, "transcript", None)
@@ -128,8 +133,9 @@ def speak(text: str, lang: str) -> bytes | None:
             return None
         cfg = get_settings()
         args = {"text": text, "language_code": "hi-IN" if lang in ("Hindi", "Hinglish", "hi-IN") else "en-IN", "model": cfg.sarvam_tts_model, "output_audio_codec": "wav"}
-        if cfg.sarvam_tts_speaker:
-            args["speaker"] = cfg.sarvam_tts_speaker
+        speaker = cfg.sarvam_tts_speaker or ("priya_hi_recovery" if cfg.sarvam_tts_model == "bulbul:v4-flash" else "priya")
+        if speaker:
+            args["speaker"] = speaker
         response, _error = _retry(lambda: client.text_to_speech.convert(**args))
         return base64.b64decode(response.audios[0]) if response and response.audios else None
     except Exception:
