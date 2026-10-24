@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     sarvam_tts_model: str = "bulbul:v4-flash"
     sarvam_tts_speaker: str | None = None
     sarvam_timeout_s: float = 25.0
+    # PathoVision never uses Sarvam's text-only chat model for images. Configure
+    # one of these optional vision providers on the server when image analysis is needed.
+    openai_api_key: str | None = None
+    openai_vision_model: str = "gpt-4o-mini"
+    anthropic_api_key: str | None = None
+    anthropic_vision_model: str = "claude-3-5-haiku-latest"
+    ocr_engine: str = "tesseract"
+    tesseract_cmd: str | None = None
     database_url: str = f"sqlite:///{PROJECT_ROOT / 'niramaya.db'}"
     demo_password: str | None = None
     use_llm: bool = False

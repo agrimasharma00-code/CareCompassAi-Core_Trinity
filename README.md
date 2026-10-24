@@ -30,6 +30,21 @@ npm run dev
 
 The API is at `http://localhost:8000`; frontend at `http://localhost:3000`. The scored endpoint is `POST /api/v1/care/intake-triage-match`. Health checks are `GET /health` and `GET /api/v1/sarvam/ping`. Set `SARVAM_API_KEY` only in `backend/.env`; it is never exposed to or logged by the frontend. The Sarvam adapter is optional and disabled unless configured.
 
+## PathoVision setup
+
+PathoVision accepts one image or PDF at a time, processes it in memory, and does not save uploaded health files. It provides information only, never a diagnosis or prescription. PDF reports with embedded text can be read directly. Scanned reports need OCR.
+
+Install the optional image/PDF/OCR packages from `backend/requirements.txt`. For Windows, install [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki), add the Hindi language data (`hin.traineddata`) alongside `eng.traineddata`, then set this in `backend/.env`:
+
+```text
+OCR_ENGINE=tesseract
+TESSERACT_CMD=C:\\Program Files\\Tesseract-OCR\\tesseract.exe
+```
+
+On Ubuntu/Debian, run `sudo apt install tesseract-ocr tesseract-ocr-hin`; leave `TESSERACT_CMD` blank when `tesseract` is on `PATH`.
+
+Image interpretation requires a vision-capable provider configured on the backend: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Sarvam's text-only chat model is deliberately not used for images. Without a vision key, PathoVision shows a specific configuration error rather than inventing a result. Written medical reports continue to use their own printed reference ranges only.
+
 ## Demo roles (synthetic accounts)
 
 Copy the sample `DEMO_PASSWORD` from `backend/.env.example` into `backend/.env` (or choose a local demo password). On backend startup, CareCompass creates the SQLite tables and seeds demo users. All demo accounts use the value of `DEMO_PASSWORD`:

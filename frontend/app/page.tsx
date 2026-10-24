@@ -4,6 +4,7 @@ const portals = [
   { icon: "✳", title: "Patient", eyebrow: "Care navigation", description: "Talk or type in Hindi, Hinglish, or English to find the right next care step.", href: "/login/patient", action: "Patient login" },
   { icon: "✚", title: "Hospital & clinic", eyebrow: "Provider workspace", description: "Review referred requests, availability, and care coordination in one queue.", href: "/login/hospital", action: "Provider login" },
   { icon: "➜", title: "Ambulance partner", eyebrow: "Fleet response", description: "Manage vehicle availability and emergency handoffs from Niramaya.", href: "/login/ambulance", action: "Partner login" },
+  { icon: "⌁", title: "PathoVision", eyebrow: "Visual guidance", description: "Upload a wound photo or report for safe, plain-language information and next-step guidance.", href: "/pathovision", action: "Open PathoVision" },
 ];
 
 export default function HomePage() {
