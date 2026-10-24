@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     sarvam_api_key: str = ""
     use_llm: bool = False
     sarvam_chat_model: str = "sarvam-105b"
+    sarvam_convo_model: str = "sarvam-105b-conversations"
+    sarvam_max_tokens: int = 800
     sarvam_stt_model: str = "saaras:v4"
     sarvam_tts_model: str = "bulbul:v4-flash"
     sarvam_tts_speaker: str = ""
