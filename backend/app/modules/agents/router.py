@@ -28,6 +28,7 @@ class AssistantRequest(BaseModel):
     history: list[dict] = Field(default_factory=list)
     language: str = "auto"
     care_context: CareContext | None = None
+    booking_context: dict | None = None
 
 
 class AssistantResponse(BaseModel):
@@ -56,6 +57,10 @@ APP_HELP = r"booking|book (?:a|an|my)? ?(?:doctor|visit|appointment|service)|how
 GREETING = r"^(?:hi|hello|hey|namaste|namaskar|नमस्ते|हेलो|mera naam .{1,40}|my name is .{1,40}|thanks|thank you|धन्यवाद|शुक्रिया)[!. ,?]*$"
 OFF_TOPIC = r"\b(?:ipl|cricket|score|homework|maths homework|joke|jokes|football|movie review)\b|आईपीएल|क्रिकेट|होमवर्क|चुटकुला"
 GENERAL_HEALTH = r"\b(?:health|fever|bukhar|blood pressure|bp|dehydration|hydration|cough|cold|nutrition|sleep|exercise|headache|symptom|signs?)\b|बुखार|खांसी|पानी की कमी|ब्लड प्रेशर|स्वास्थ्य|लक्षण"
+HOME_VISIT_CHIP = r"^(?:घर पर जाँच|घर पे जाँच|ghar pe check[- ]?up|ghar par check[- ]?up|home check[- ]?up)$"
+DOCTOR_CHIP = r"^(?:डॉक्टर से बात करें|doctor se baat karein|talk to a doctor)$"
+SHOW_CAREGIVERS_CHIP = r"^(?:उपलब्ध देखभालकर्ता दिखाएँ|show available caregivers)$"
+BOOKING_STATUS = r"when (?:will|are) (?:they|the caregiver|the provider) (?:arrive|get here)|kab aayenge|कब आएंगे|कब आएँगे|booking status|confirm hua\??|booking confirm hui\??"
 
 SUGGESTIONS = {
     "emergency": {"English": [], "Hindi": [], "Hinglish": []},
@@ -195,6 +200,28 @@ def _emergency_message(language: str) -> str:
     }[language]
 
 
+def _booking_status_message(booking: dict | None, language: str) -> tuple[str, list[str]]:
+    if not booking:
+        messages = {
+            "Hindi": "अभी कोई बुकिंग नहीं है। मैं उपलब्ध देखभालकर्ता दिखा सकती हूँ।",
+            "Hinglish": "Abhi koi booking nahi hai. Main available caregivers dikha sakti hoon.",
+            "English": "There is no booking yet. I can show available caregivers.",
+        }
+        chips = {"Hindi": ["उपलब्ध देखभालकर्ता दिखाएँ"], "Hinglish": ["Show available caregivers"], "English": ["Show available caregivers"]}
+        return messages[language], chips[language]
+    status = str(booking.get("state", "requested"))
+    caregiver = str(booking.get("caregiver_id") or booking.get("provider_name") or "caregiver")
+    slot = str(booking.get("slot") or "")
+    if language == "Hindi":
+        state_text = "देखभालकर्ता की पुष्टि का इंतज़ार है" if status == "requested" else f"स्थिति: {status}"
+        return f"आपकी बुकिंग {caregiver} के साथ {slot} के लिए है। {state_text}। पहुँचने का समय अभी उपलब्ध नहीं है।", []
+    if language == "Hinglish":
+        state_text = "caregiver ki confirmation ka intezaar hai" if status == "requested" else f"status {status} hai"
+        return f"Aapki booking {caregiver} ke saath {slot} ke liye hai. {state_text}. Arrival ka time confirm nahi hai.", []
+    state_text = "It is waiting for confirmation from the caregiver." if status == "requested" else f"Its current status is {status}."
+    return f"Your booking is with {caregiver} for {slot}. {state_text} I don’t have a confirmed arrival time.", []
+
+
 def _care_context(care: dict, symptoms: list[str]) -> CareContext | None:
     if not care.get("care_type") or not care.get("urgency"):
         return None
@@ -221,6 +248,11 @@ def chat(request: AssistantRequest):
         spoken = answer_agent.spoken_text(message, language, "emergency", updated_context.model_dump() if updated_context else None)
         return AssistantResponse(mode="emergency", message=message, spoken_message=spoken, care=care, language=language, suggestions=_suggestions("emergency", language), care_context=updated_context)
 
+    if re.search(BOOKING_STATUS, routing_message, re.I):
+        message, suggestions = _booking_status_message(request.booking_context, language)
+        spoken = answer_agent.spoken_text(message, language, "answer", context.model_dump() if context else None)
+        return AssistantResponse(mode="answer", message=message, spoken_message=spoken, care=None, language=language, suggestions=suggestions, care_context=context)
+
     # A short follow-up about the previous result explains that result directly;
     # it must not send a new request through triage.
     if context and _is_explanation_request(request.message):
@@ -234,7 +266,15 @@ def chat(request: AssistantRequest):
         spoken = answer_agent.spoken_text(message, language, "answer", context.model_dump() if context else None)
         return AssistantResponse(mode="answer", message=message, spoken_message=spoken, care=None, language=language, suggestions=_suggestions("answer", language), care_context=context)
 
-    intent = _rule_intent(routing_message)
+    home_chip = bool(re.fullmatch(HOME_VISIT_CHIP, routing_message.strip(), re.I))
+    doctor_chip = bool(re.fullmatch(DOCTOR_CHIP, routing_message.strip(), re.I))
+    show_caregivers_chip = bool(re.fullmatch(SHOW_CAREGIVERS_CHIP, routing_message.strip(), re.I))
+    explicit_service = "paramedic_home_visit" if home_chip else "teleconsultation" if doctor_chip else context.care_type if show_caregivers_chip and context else None
+    if explicit_service and context:
+        symptom_text = ", ".join(symptoms or context.symptoms)
+        service_text = {"paramedic_home_visit": "medic home visit", "teleconsultation": "virtual doctor consultation", "home_nursing": "home nursing", "lab_test_home": "home lab test"}.get(explicit_service, "care option")
+        care_request.user_input = f"{service_text} requested for the same problem: {symptom_text or 'previous care concern'}"
+    intent = "care" if explicit_service and context else _rule_intent(routing_message)
     if intent is None:
         try:
             classified = sarvam_client.chat_json(CLASSIFY_SYSTEM, routing_message, IntentClassification)
@@ -251,6 +291,13 @@ def chat(request: AssistantRequest):
     mode = intent
     if intent == "care":
         care = run_triage(care_request)
+        if explicit_service and context and care.get("care_type") != "emergency_112" and not care.get("follow_up_question"):
+            care["care_type"] = explicit_service
+            care["urgency"] = "same_day"
+            from app.core.matching import match
+            care["matched_caregivers"] = match(explicit_service, request.location, language, care_request.user_input)
+            from app.core.reasoning import explain_for_assistant
+            care["reasoning"] = explain_for_assistant(explicit_service, "same_day", [], care_request.user_input, language)
         new_context = _care_context(care, symptoms)
         if new_context:
             updated_context = new_context

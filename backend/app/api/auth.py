@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.db.database import get_db, verify_password
 from app.db.models import User
 from app.security import create_access_token, decode_access_token
+from app.core.loaders import load_caregivers
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 bearer = HTTPBearer(auto_error=False)
@@ -63,3 +64,8 @@ def login(request: LoginRequest, session: Session = Depends(get_db)):
 @router.get("/me")
 def me(user: User = Depends(get_current_user)):
     return public_user(user)
+
+
+@router.get("/providers")
+def demo_providers():
+    return [{"caregiver_id": item["caregiver_id"], "name": item["name"], "role": item["role"], "area": item["base_area"]} for item in load_caregivers() if item.get("active", "").strip().lower() == "true"]

@@ -41,5 +41,5 @@ def test_initialize_database_creates_all_required_tables():
     with TemporaryDirectory(dir=Path(__file__).parent) as folder:
         engine = create_engine(f"sqlite:///{Path(folder) / 'schema.db'}")
         assert initialize_database(target_engine=engine, demo_password="") == 0
-        assert set(Base.metadata.tables) == {"users", "bookings", "alerts", "checkins", "events"}
+        assert set(Base.metadata.tables) == {"users", "bookings", "alerts", "checkins", "events", "conversations"}
         engine.dispose()

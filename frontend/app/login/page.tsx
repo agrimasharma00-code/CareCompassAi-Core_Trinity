@@ -7,6 +7,8 @@ import { API_BASE_URL } from "../../lib/api";
 
 type DemoRole = "patient" | "dispatch" | "provider";
 type LoginResponse = { access_token: string; user: { username: string; name: string; role: DemoRole; caregiver_id: string | null } };
+type DemoProvider = { caregiver_id: string; name: string; role: string; area: string };
+type RecentBooking = { caregiver_id: string; slot: string; state: string };
 
 const DEMO_PASSWORD = process.env.NEXT_PUBLIC_DEMO_PASSWORD || "CareCompass-Demo-2026";
 const HOME_BY_ROLE: Record<DemoRole, string> = { patient: "/patient", dispatch: "/dispatch", provider: "/provider" };
@@ -17,6 +19,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [providerPickerOpen, setProviderPickerOpen] = useState(false);
+  const [providers, setProviders] = useState<DemoProvider[]>([]);
+  const [providerSearch, setProviderSearch] = useState("");
+  const [recentBooking, setRecentBooking] = useState<RecentBooking | null>(null);
 
   async function submit(credentials: { username: string; password: string }) {
     setBusy(true);
@@ -46,7 +52,28 @@ export default function LoginPage() {
   }
 
   async function demo(role: DemoRole) {
-    const demoUser = role === "patient" ? "patient1" : role === "dispatch" ? "dispatch" : "CG_001";
+    if (role === "provider") {
+      setProviderPickerOpen(true);
+      setError("");
+      try {
+        const [rosterResponse, token] = await Promise.all([fetch(`${API_BASE_URL}/api/v1/auth/providers`), Promise.resolve(localStorage.getItem("carecompass_token"))]);
+        if (!rosterResponse.ok) throw new Error("Could not load active caregivers.");
+        setProviders(await rosterResponse.json());
+        if (token) {
+          const userResponse = await fetch(`${API_BASE_URL}/api/v1/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+          const user = userResponse.ok ? await userResponse.json() : null;
+          if (user?.role === "patient") {
+            const bookingResponse = await fetch(`${API_BASE_URL}/api/v1/bookings/mine`, { headers: { Authorization: `Bearer ${token}` } });
+            if (bookingResponse.ok) {
+              const bookings: RecentBooking[] = await bookingResponse.json();
+              setRecentBooking(bookings.find((item) => item.state !== "cancelled" && item.state !== "rejected") || null);
+            }
+          }
+        }
+      } catch (err) { setError(err instanceof Error ? err.message : "Could not load caregivers."); }
+      return;
+    }
+    const demoUser = role === "patient" ? "patient1" : "dispatch";
     setUsername(demoUser);
     setPassword(DEMO_PASSWORD);
     await submit({ username: demoUser, password: DEMO_PASSWORD });
@@ -57,7 +84,14 @@ export default function LoginPage() {
     if (!token) return;
     fetch(`${API_BASE_URL}/api/v1/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("expired")))
-      .then((user: LoginResponse["user"]) => router.replace(HOME_BY_ROLE[user.role]))
+      .then(async (user: LoginResponse["user"]) => {
+        if (user.role !== "patient") { router.replace(HOME_BY_ROLE[user.role]); return; }
+        const bookingsResponse = await fetch(`${API_BASE_URL}/api/v1/bookings/mine`, { headers: { Authorization: `Bearer ${token}` } });
+        if (bookingsResponse.ok) {
+          const bookings: RecentBooking[] = await bookingsResponse.json();
+          setRecentBooking(bookings.find((item) => item.state !== "cancelled" && item.state !== "rejected") || null);
+        }
+      })
       .catch(() => {
         localStorage.removeItem("carecompass_token");
         localStorage.removeItem("carecompass_user");
@@ -84,6 +118,14 @@ export default function LoginPage() {
           <button className="pill" disabled={busy} onClick={() => void demo("dispatch")}>Demo as Dispatch</button>
           <button className="pill" disabled={busy} onClick={() => void demo("provider")}>Demo as Provider</button>
         </div>
+        {recentBooking && !providerPickerOpen && <button type="button" className="button" style={{ marginTop: 12 }} disabled={busy} onClick={() => void submit({ username: recentBooking.caregiver_id, password: DEMO_PASSWORD })}>Open as the caregiver I just booked ({recentBooking.caregiver_id})</button>}
+        {providerPickerOpen && <section aria-label="Choose demo caregiver" style={{ marginTop: 18, border: "1px solid #dce7e4", borderRadius: 14, padding: 14 }}>
+          <h2 style={{ fontSize: 20, marginTop: 0 }}>Choose a caregiver account</h2>
+          {recentBooking && <button type="button" className="button" disabled={busy} onClick={() => void submit({ username: recentBooking.caregiver_id, password: DEMO_PASSWORD })}>Open as the caregiver I just booked ({recentBooking.caregiver_id})</button>}
+          <label style={{ display: "block", margin: "12px 0" }}>Search caregivers<input aria-label="Search caregivers" value={providerSearch} onChange={(event) => setProviderSearch(event.target.value)} placeholder="ID, name, role, or area" style={{ display: "block", width: "100%", padding: 10, marginTop: 5, border: "1px solid #dce7e4", borderRadius: 10 }} /></label>
+          <div style={{ display: "grid", gap: 8, maxHeight: 300, overflowY: "auto" }}>{providers.filter((provider) => `${provider.caregiver_id} ${provider.name} ${provider.role} ${provider.area}`.toLowerCase().includes(providerSearch.toLowerCase())).map((provider) => <button key={provider.caregiver_id} type="button" className="pill" disabled={busy} onClick={() => { setUsername(provider.caregiver_id); void submit({ username: provider.caregiver_id, password: DEMO_PASSWORD }); }} style={{ justifyContent: "space-between", textAlign: "left", border: "1px solid #dce7e4", background: "white", borderRadius: 12, padding: 12 }}><strong>{provider.caregiver_id} · {provider.name}</strong><span>{provider.role} · {provider.area}</span></button>)}</div>
+          {providers.length > 0 && providers.filter((provider) => `${provider.caregiver_id} ${provider.name} ${provider.role} ${provider.area}`.toLowerCase().includes(providerSearch.toLowerCase())).length === 0 && <p className="muted">No active caregivers match that search.</p>}
+        </section>}
         <p className="muted" style={{ marginBottom: 0, fontSize: 13 }}>Quick buttons use the sample password from <code>NEXT_PUBLIC_DEMO_PASSWORD</code>; keep it aligned with backend <code>DEMO_PASSWORD</code>.</p>
       </section>
     </main>
