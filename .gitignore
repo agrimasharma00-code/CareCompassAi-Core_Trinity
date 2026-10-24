@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+backend/models/*
+!backend/models/.gitkeep
+backend/eval/predictions.csv
+frontend/node_modules/
+frontend/.next/
