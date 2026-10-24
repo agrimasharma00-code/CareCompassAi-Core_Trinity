@@ -100,6 +100,13 @@ def chat_text_result(messages: list[dict]) -> tuple[str | None, str | None]:
     cfg = get_settings()
     return _chat_text_result(messages, model=cfg.sarvam_convo_model, max_tokens=cfg.sarvam_max_tokens)
 
+class Transcription(str):
+    """String-compatible transcript carrying Sarvam's detected language code."""
+    def __new__(cls, transcript: str, language_code: str | None = None):
+        instance = super().__new__(cls, transcript)
+        instance.language_code = language_code
+        return instance
+
 def transcribe(data: bytes, filename: str) -> str | None:
     try:
         client = _client()
@@ -107,7 +114,10 @@ def transcribe(data: bytes, filename: str) -> str | None:
             return None
         import io
         response, _error = _retry(lambda: client.speech_to_text.transcribe(file=(filename, io.BytesIO(data)), model=get_settings().sarvam_stt_model, mode="transcribe"))
-        return getattr(response, "transcript", None) if response else None
+        if not response:
+            return None
+        text = getattr(response, "transcript", None)
+        return Transcription(text, getattr(response, "language_code", None)) if text else None
     except Exception:
         return None
 
@@ -117,7 +127,7 @@ def speak(text: str, lang: str) -> bytes | None:
         if not client:
             return None
         cfg = get_settings()
-        args = {"text": text, "language_code": "hi-IN" if lang in ("Hindi", "Hinglish") else "en-IN", "model": cfg.sarvam_tts_model}
+        args = {"text": text, "language_code": "hi-IN" if lang in ("Hindi", "Hinglish", "hi-IN") else "en-IN", "model": cfg.sarvam_tts_model, "output_audio_codec": "wav"}
         if cfg.sarvam_tts_speaker:
             args["speaker"] = cfg.sarvam_tts_speaker
         response, _error = _retry(lambda: client.text_to_speech.convert(**args))

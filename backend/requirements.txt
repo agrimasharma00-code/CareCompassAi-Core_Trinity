@@ -8,3 +8,4 @@ pandas
 sarvamai
 python-dotenv
 pytest
+python-multipart
