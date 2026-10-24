@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { API_BASE_URL } from "../../lib/api";
 
 type Caregiver = { caregiver_id: string; score: number; reason: string };
-type CareResult = { follow_up_question: string | null; care_type: string | null; urgency: string | null; red_flags: string[]; reasoning: string; matched_caregivers: Caregiver[] };
+type CareResult = { follow_up_question: string | null; care_type: string | null; urgency: string | null; red_flags: string[]; reasoning: string; matched_caregivers: Caregiver[]; safety_netting?: string; why_not?: string; handoff_summary?: string };
 type Turn = { role: "user" | "assistant"; content: string };
-type VoiceMessage = { type: string; text?: string; transcript?: string; response?: CareResult; agent_reply?: string; audio_base64?: string; audio_mime_type?: string; message?: string };
+type VoiceMessage = { type: string; text?: string; transcript?: string; response?: CareResult; agent_reply?: string; audio_base64?: string; audio_mime_type?: string; message?: string; alert?: unknown };
+type Booking = { id: string; status: string; caregiver_id: string };
 
 const careNames: Record<string, string> = { paramedic_home_visit: "Medic home visit", lab_test_home: "Home lab test", nurse: "Home nursing support", gp_teleconsult: "Virtual GP consultation", specialist: "Specialist consultation", emergency_referral: "Emergency support" };
 
@@ -16,6 +17,7 @@ export default function PatientPage() {
   const [input, setInput] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [result, setResult] = useState<CareResult | null>(null);
+  const [booking, setBooking] = useState<Booking | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
@@ -31,6 +33,22 @@ export default function PatientPage() {
   const speakingRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  useEffect(() => {
+    if (!booking?.id) return;
+    const socket = new WebSocket(`${API_BASE_URL.replace(/^http/, "ws")}/api/v1/ws/patient/${booking.id}`);
+    socket.onmessage = (event) => {
+      const update = JSON.parse(event.data) as { type?: string; booking?: Booking; response?: CareResult; alert?: unknown };
+      if (update.booking) {
+        setBooking(update.booking);
+        setStatus(`Booking ${update.booking.id} is now ${update.booking.status}.`);
+      }
+      if (update.response) setResult(update.response);
+      if (update.alert) setStatus("A demo dispatch alert was created. For a real emergency, call 112 first.");
+    };
+    socket.onerror = () => setStatus("Live booking updates are temporarily unavailable.");
+    return () => socket.close();
+  }, [booking?.id]);
 
   function playAgentAudio(audioBase64?: string, mimeType?: string, fallbackText?: string) {
     if (!audioBase64 || !mimeType) { setStatus(fallbackText ?? "Care guidance is ready."); return; }
@@ -85,6 +103,30 @@ export default function PatientPage() {
     finally { setBusy(false); }
   }
 
+  async function bookCaregiver(caregiver: Caregiver) {
+    if (!result?.care_type || !result.urgency) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/bookings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ caregiver_id: caregiver.caregiver_id, patient_name: "Demo patient", care_type: result.care_type, urgency: result.urgency, summary: result.handoff_summary || result.reasoning }) });
+      if (!response.ok) throw new Error("Booking could not be confirmed.");
+      const confirmed = await response.json(); setBooking(confirmed); setStatus(`Booking ${confirmed.id} is confirmed as pending provider acceptance.`);
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Booking could not be confirmed."); }
+    finally { setBusy(false); }
+  }
+
+  async function simulateReTriage() {
+    if (!booking) return;
+    const update = window.prompt("Demo: enter the check-in update to re-triage", "Symptoms are worse. There is breathing difficulty.");
+    if (!update?.trim()) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/bookings/retriage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ booking_id: booking.id, update, lat: location.lat, lng: location.lng }) });
+      if (!response.ok) throw new Error("Re-triage could not be completed.");
+      const next = await response.json(); setResult(next.response); setStatus(next.alert ? "The change triggered a demo dispatch alert. Call 112 first for an emergency." : "Re-triage complete. Your care guidance has been updated.");
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Re-triage could not be completed."); }
+    finally { setBusy(false); }
+  }
+
   function stopVoice(message = "Voice session ended.") {
     audioRef.current?.pause(); audioRef.current = null; audioSourceRef.current?.stop(); audioSourceRef.current = null; speakingRef.current = false; setSpeaking(false);
     processorRef.current?.disconnect(); void contextRef.current?.close(); streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -119,6 +161,7 @@ export default function PatientPage() {
           const reply = message.agent_reply ?? message.response?.follow_up_question ?? message.response?.reasoning ?? "I am here to help.";
           if (transcript) addFinalTurn(transcript, reply, message.response);
           setLiveTranscript(""); playAgentAudio(message.audio_base64, message.audio_mime_type, reply);
+          if (message.alert) setStatus("A demo dispatch alert was created. For a real emergency, call 112 first.");
         }
         if (message.type === "error") stopVoice(message.message ?? "Voice connection failed.");
       };
@@ -189,6 +232,8 @@ export default function PatientPage() {
     {status && <p role="status" className="pill" style={{ marginTop: 16 }}>{status}</p>}
     {emergency && <section className="danger" style={{ marginTop: 24 }}><a href="tel:112" className="button" style={{ background: "white", color: "#a91e2a", textDecoration: "none" }}>Call 112 now</a><h2 style={{ margin: "20px 0 7px", fontSize: 29 }}>This may need immediate care.</h2><p style={{ margin: 0 }}>{result?.reasoning}</p></section>}
     {result && !emergency && <section className="card" style={{ marginTop: 24, padding: 24 }}><span className="pill">{result.urgency?.replace("_", " ") ?? "Care guidance"}</span><h2 style={{ margin: "12px 0 6px", fontSize: 26 }}>{result.follow_up_question ? "One quick question" : careNames[result.care_type ?? ""] ?? "Care option"}</h2><p className="muted" style={{ lineHeight: 1.6 }}>{result.follow_up_question ?? result.reasoning}</p>{result.matched_caregivers.length > 0 && <div className="grid" style={{ marginTop: 16 }}>{result.matched_caregivers.map((caregiver) => <div key={caregiver.caregiver_id} style={{ border: "1px solid #e4ece9", borderRadius: 15, padding: 16 }}><strong>{caregiver.caregiver_id}</strong><p className="muted" style={{ margin: "7px 0 0", fontSize: 14 }}>{caregiver.reason}</p></div>)}</div>}</section>}
+    {result && <section className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", marginTop: 16 }}><article className="card" style={{ padding: 20 }}><span className="eyebrow">Safety net</span><p style={{ lineHeight: 1.55 }}>{result.safety_netting || "If symptoms get worse, call 112 immediately."}</p></article><article className="card" style={{ padding: 20 }}><span className="eyebrow">Why this route</span><p style={{ lineHeight: 1.55 }}>{result.why_not || result.reasoning}</p></article><article className="card" style={{ padding: 20 }}><span className="eyebrow">Provider handoff</span><p style={{ lineHeight: 1.55 }}>{result.handoff_summary || result.reasoning}</p></article></section>}
+    {result && !emergency && result.matched_caregivers.length > 0 && <section className="card" style={{ marginTop: 16, padding: 20 }}><span className="eyebrow">One-tap booking</span><h2 style={{ margin: "8px 0 14px" }}>Choose a matched caregiver</h2><div className="grid">{result.matched_caregivers.map((caregiver) => <div key={`book-${caregiver.caregiver_id}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, borderTop: "1px solid #e4ece9", paddingTop: 12 }}><div><strong>{caregiver.caregiver_id}</strong><p className="muted" style={{ margin: "3px 0 0", fontSize: 14 }}>{caregiver.reason}</p></div><button className="button" onClick={() => bookCaregiver(caregiver)} disabled={busy}>Book</button></div>)}</div>{booking && <div style={{ marginTop: 16 }}><span className="pill">{booking.id}: {booking.status}</span><button className="button" style={{ marginLeft: 10 }} onClick={simulateReTriage} disabled={busy}>Simulate 6-hour check-in</button></div>}</section>}
     {voiceMode && <section className="voice-mode" role="dialog" aria-label="CareCompass voice conversation">
       <div className="voice-mode-top"><span className="voice-mode-brand">✳ CareCompass</span><button type="button" className="voice-close" onClick={() => stopVoice("Voice session ended.")} aria-label="Close voice conversation">×</button></div>
       <div className="voice-stage"><div className={`voice-orb ${speaking ? "voice-orb-speaking" : ""} ${listening && !speaking ? "voice-orb-listening" : ""}`} aria-hidden="true" /><p className="voice-status">{speaking ? "CareCompass is speaking" : muted ? "Microphone is muted" : liveTranscript || (listening ? "Listening…" : "Connecting to CareCompass…")}</p>{turns.length > 0 && <p className="voice-last-reply">{turns[turns.length - 1].content}</p>}</div>

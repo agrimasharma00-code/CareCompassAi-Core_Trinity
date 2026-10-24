@@ -57,3 +57,6 @@ class CareResponse(BaseModel):
     red_flags: list[str] = Field(default_factory=list)
     reasoning: str
     matched_caregivers: list[MatchedCaregiver] = Field(default_factory=list)
+    safety_netting: str = ""
+    why_not: str = ""
+    handoff_summary: str = ""

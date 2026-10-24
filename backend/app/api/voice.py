@@ -5,7 +5,9 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.api.care import pipeline
+from app.api.ws import hub
 from app.config import settings
+from app.core.live import create_alert
 from app.core.voice_agent import conversational_reply, general_reply, language_from_text, resolved_language, route_from_understanding, understand_voice_turn
 from app.schemas.care import CareRequest, CareResponse, ConversationTurn, Language, Location
 
@@ -82,11 +84,16 @@ async def chat_with_agent(payload: AgentMessage) -> dict[str, object]:
         if result else await general_reply(payload.conversation_history, text, language)
     )
     audio = await _sarvam_audio_reply(reply, "hi-IN" if language == Language.HI else "en-IN")
+    alert = None
+    if result and result.care_type and result.care_type.value == "emergency_referral":
+        alert = create_alert({"patient_name": "Demo patient", "summary": result.handoff_summary, "red_flags": result.red_flags, "latitude": payload.lat, "longitude": payload.lng})
+        await hub.publish("dispatch", {"type": "alert.created", "alert": alert})
     return {
         "reply": reply,
         "response": result.model_dump(mode="json") if result else None,
         "audio_base64": audio,
         "audio_mime_type": "audio/wav" if audio else None,
+        "alert": alert,
     }
 
 

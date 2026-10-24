@@ -1,0 +1,7 @@
+{
+  "care_type_macro_f1": 0.986,
+  "urgency_macro_f1": 1.0,
+  "emergency_recall": 1.0,
+  "under_triage_count": 0,
+  "validation_rows": 151
+}

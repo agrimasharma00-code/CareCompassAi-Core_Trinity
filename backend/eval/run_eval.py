@@ -12,15 +12,31 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.core.pipeline import CarePipeline  # noqa: E402
+from app.core.loaders import load_vignettes  # noqa: E402
 from app.schemas.care import CareRequest, CareResponse, Location  # noqa: E402
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vignettes", type=Path, default=ROOT / "data" / "sample_vignettes.json")
+    parser.add_argument("--vignettes", type=Path, help="Optional JSON or JSONL evaluation file. Defaults to supplied raw dataset.")
     parser.add_argument("--output", type=Path, default=ROOT / "eval" / "predictions.csv")
     args = parser.parse_args()
-    rows = json.loads(args.vignettes.read_text(encoding="utf-8"))
+    if args.vignettes:
+        source = args.vignettes
+        if source.suffix == ".jsonl":
+            rows = []
+            for line in source.read_text(encoding="utf-8").splitlines():
+                item = json.loads(line)
+                if "request" in item and "response" in item:
+                    from app.core.loaders import DATASET_CARE_TYPE_MAP, DATASET_URGENCY_MAP
+                    care_type = DATASET_CARE_TYPE_MAP.get(item["response"].get("care_type"))
+                    urgency = DATASET_URGENCY_MAP.get(item["response"].get("urgency"))
+                    if care_type and urgency:
+                        rows.append({"text": item["request"]["user_input"], "care_type": care_type, "urgency": urgency})
+        else:
+            rows = json.loads(source.read_text(encoding="utf-8"))
+    else:
+        rows = load_vignettes()
     pipeline = CarePipeline()
     predictions: list[dict[str, str]] = []
     for row in rows:

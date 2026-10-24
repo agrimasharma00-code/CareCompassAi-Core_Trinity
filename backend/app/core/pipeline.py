@@ -3,7 +3,7 @@
 from app.core.intake import extract_facts, next_follow_up
 from app.core.matching import match_caregivers
 from app.core.red_flags import find_red_flags
-from app.core.reasoning import build_reasoning
+from app.core.reasoning import build_reasoning, handoff_summary, safety_netting, why_not_explanation
 from app.core.triage import TriageClassifier
 from app.schemas.care import CareRequest, CareResponse, CareType, Urgency
 
@@ -24,11 +24,14 @@ class CarePipeline:
                 red_flags=red_flags,
                 reasoning=build_reasoning(full_text, facts, red_flags),
                 matched_caregivers=[],
+                safety_netting=safety_netting(red_flags, Urgency.IMMEDIATE.value),
+                why_not=why_not_explanation(red_flags, CareType.EMERGENCY_REFERRAL.value),
+                handoff_summary=handoff_summary(facts, Urgency.IMMEDIATE.value, red_flags),
             )
         triage = self.triage.predict(full_text)
         question = next_follow_up(facts, full_text, request.conversation_history, triage.confidence, force_final)
         if question:
-            return CareResponse(follow_up_question=question, reasoning="One brief detail will help route this request safely.")
+            return CareResponse(follow_up_question=question, reasoning="One brief detail will help route this request safely.", safety_netting=safety_netting([], None), why_not="A care option is not selected yet because one detail is still needed.", handoff_summary=handoff_summary(facts, None, []))
         care_type = facts.requested_service or triage.care_type
         caregivers = match_caregivers(care_type, request.location, facts.language, full_text)
         return CareResponse(
@@ -37,4 +40,7 @@ class CarePipeline:
             red_flags=[],
             reasoning=build_reasoning(full_text, facts),
             matched_caregivers=caregivers,
+            safety_netting=safety_netting([], triage.urgency),
+            why_not=why_not_explanation([], care_type),
+            handoff_summary=handoff_summary(facts, triage.urgency, []),
         )

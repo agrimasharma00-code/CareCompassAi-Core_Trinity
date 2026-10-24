@@ -1,6 +1,7 @@
 """Train the deliberately small, fast baseline triage models."""
 
 import sys
+import json
 from pathlib import Path
 
 import joblib
@@ -51,8 +52,10 @@ def main() -> None:
         for probability, predicted in zip(immediate_probs, urgency_pred)
     ]
 
-    print(f"care_type macro-F1: {f1_score(care_truth, care_pred, average='macro', zero_division=0):.3f}")
-    print(f"urgency macro-F1: {f1_score(urgency_truth, urgency_pred, average='macro', zero_division=0):.3f}")
+    care_f1 = f1_score(care_truth, care_pred, average='macro', zero_division=0)
+    urgency_f1 = f1_score(urgency_truth, urgency_pred, average='macro', zero_division=0)
+    print(f"care_type macro-F1: {care_f1:.3f}")
+    print(f"urgency macro-F1: {urgency_f1:.3f}")
     print("care_type confusion matrix:")
     print(confusion_matrix(care_truth, care_pred))
     print("urgency confusion matrix:")
@@ -60,13 +63,16 @@ def main() -> None:
     emergency_truth = [value == "immediate" for value in urgency_truth]
     emergency_pred = [value == "immediate" for value in urgency_with_bias]
     baseline_emergency_pred = [value == "immediate" for value in urgency_pred]
-    print(f"emergency recall before threshold bias: {recall_score(emergency_truth, baseline_emergency_pred, zero_division=0):.3f}")
-    print(f"emergency recall at threshold {settings.immediate_threshold:.2f}: {recall_score(emergency_truth, emergency_pred, zero_division=0):.3f}")
+    baseline_recall = recall_score(emergency_truth, baseline_emergency_pred, zero_division=0)
+    emergency_recall = recall_score(emergency_truth, emergency_pred, zero_division=0)
+    print(f"emergency recall before threshold bias: {baseline_recall:.3f}")
+    print(f"emergency recall at threshold {settings.immediate_threshold:.2f}: {emergency_recall:.3f}")
 
     models_dir = Path(__file__).resolve().parents[1] / "models"
     models_dir.mkdir(exist_ok=True)
     joblib.dump(care_model, models_dir / "care_type.joblib")
     joblib.dump(urgency_model, models_dir / "urgency.joblib")
+    (models_dir / "metrics.json").write_text(json.dumps({"care_type_macro_f1": round(care_f1, 3), "urgency_macro_f1": round(urgency_f1, 3), "emergency_recall": round(emergency_recall, 3), "under_triage_count": sum(expected and not actual for expected, actual in zip(emergency_truth, emergency_pred)), "validation_rows": len(validation_indices)}, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":

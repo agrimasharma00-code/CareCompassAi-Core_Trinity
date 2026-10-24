@@ -13,3 +13,5 @@ models/*.joblib
 backend/models/*.joblib
 *.tsbuildinfo
 frontend/next-dev*.log
+backend/data/carecompass_demo.sqlite3
+backend/eval/predictions.csv

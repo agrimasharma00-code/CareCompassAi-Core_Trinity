@@ -7,7 +7,9 @@ from sarvamai import AsyncSarvamAI, RealtimeAudioInput
 
 from app.api.care import pipeline
 from app.api.voice import _sarvam_audio_reply
+from app.api.ws import hub
 from app.config import settings
+from app.core.live import create_alert
 from app.core.voice_agent import conversational_reply, general_reply, resolved_language, route_from_understanding, understand_voice_turn
 from app.schemas.care import CareRequest, ConversationTurn, Language, Location
 
@@ -79,6 +81,16 @@ async def realtime_voice(socket: WebSocket) -> None:
                         spoken_text = await conversational_reply(history[:-1], transcript, result, reply_language) if decision else await general_reply(history[:-1], transcript, reply_language)
                         history.append(ConversationTurn(role="assistant", content=spoken_text))
                         audio = await _sarvam_audio_reply(spoken_text, "hi-IN" if reply_language == Language.HI else "en-IN")
+                        alert = None
+                        if result.urgency and result.urgency.value == "immediate":
+                            alert = create_alert({
+                                "patient_name": "Voice demo patient",
+                                "summary": result.handoff_summary or result.reasoning,
+                                "red_flags": result.red_flags,
+                                "latitude": 28.545,
+                                "longitude": 77.192,
+                            })
+                            await hub.publish("dispatch", {"type": "alert.created", "alert": alert})
                         await socket.send_json({
                             "type": "final",
                             "transcript": transcript,
@@ -86,6 +98,7 @@ async def realtime_voice(socket: WebSocket) -> None:
                             "agent_reply": spoken_text,
                             "audio_base64": audio,
                             "audio_mime_type": "audio/wav" if audio else None,
+                            "alert": alert,
                         })
                     elif event.event == "error":
                         await socket.send_json({"type": "error", "message": event.message})
