@@ -8,6 +8,7 @@ from sarvamai import AsyncSarvamAI, RealtimeAudioInput
 from app.api.care import pipeline
 from app.api.voice import _sarvam_audio_reply
 from app.config import settings
+from app.core.voice_agent import conversational_reply
 from app.schemas.care import CareRequest, ConversationTurn, Language, Location
 
 
@@ -37,6 +38,15 @@ async def realtime_voice(socket: WebSocket) -> None:
             min_speech_duration_ms=250,
             prompt="CareCompass healthcare access routing; terms include fever, cough, breathing difficulty, ambulance.",
         ) as stream:
+            greeting = "Hello, I am CareCompass. Tell me what is happening, and I will help you find the right next step."
+            greeting_audio = await _sarvam_audio_reply(greeting, "en-IN")
+            await socket.send_json({
+                "type": "ready",
+                "text": greeting,
+                "audio_base64": greeting_audio,
+                "audio_mime_type": "audio/wav" if greeting_audio else None,
+            })
+
             async def send_audio() -> None:
                 while True:
                     packet = await socket.receive()
@@ -64,14 +74,14 @@ async def realtime_voice(socket: WebSocket) -> None:
                             )
                         )
                         history.append(ConversationTurn(role="user", content=transcript))
-                        spoken_text = result.follow_up_question or result.reasoning
-                        if result.follow_up_question:
-                            history.append(ConversationTurn(role="assistant", content=result.follow_up_question))
+                        spoken_text = await conversational_reply(history[:-1], transcript, result, language)
+                        history.append(ConversationTurn(role="assistant", content=spoken_text))
                         audio = await _sarvam_audio_reply(spoken_text, "hi-IN" if language == Language.HI else "en-IN")
                         await socket.send_json({
                             "type": "final",
                             "transcript": transcript,
                             "response": result.model_dump(mode="json"),
+                            "agent_reply": spoken_text,
                             "audio_base64": audio,
                             "audio_mime_type": "audio/wav" if audio else None,
                         })
