@@ -9,6 +9,7 @@ from app.api.auth import router as auth_router
 from app.api.bookings import router as bookings_router
 from app.api.ws import router as ws_router
 from app.api.metrics import router as metrics_router
+from app.api.wellness import router as wellness_router
 
 
 app = FastAPI(title="Niramaya API", version="0.1.0")
@@ -37,6 +38,7 @@ app.include_router(bookings_router)
 app.include_router(alerts_router)
 app.include_router(ws_router)
 app.include_router(metrics_router)
+app.include_router(wellness_router)
 
 
 @app.get("/health")
