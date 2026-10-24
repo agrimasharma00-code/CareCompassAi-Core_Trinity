@@ -20,6 +20,8 @@ export default function PatientPage() {
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [muted, setMuted] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
   const [location, setLocation] = useState({ lat: 28.545, lng: 77.192 });
   const socketRef = useRef<WebSocket | null>(null);
@@ -88,11 +90,12 @@ export default function PatientPage() {
     processorRef.current?.disconnect(); void contextRef.current?.close(); streamRef.current?.getTracks().forEach((track) => track.stop());
     if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send("end");
     socketRef.current?.close(); socketRef.current = null; streamRef.current = null; contextRef.current = null; processorRef.current = null;
-    setListening(false); setLiveTranscript(""); setStatus(message);
+    setListening(false); setVoiceMode(false); setMuted(false); setLiveTranscript(""); setStatus(message);
   }
 
   async function startVoice() {
     if (listening) { stopVoice(); return; }
+    setVoiceMode(true); setMuted(false); setStatus("Preparing your voice conversation…");
     // Create and resume this synchronously inside the user click. Browsers then
     // permit Sarvam audio that arrives asynchronously over the WebSocket.
     const context = new AudioContext(); contextRef.current = context; void context.resume();
@@ -149,9 +152,16 @@ export default function PatientPage() {
       };
     } catch (error) {
       void contextRef.current?.close(); contextRef.current = null;
+      setVoiceMode(false);
       const message = error instanceof Error ? error.message : "Microphone access is required for voice guidance.";
       setStatus(message === "Failed to fetch" ? "The browser could not reach CareCompass. Start the backend, then try again." : message);
     }
+  }
+
+  function toggleMute() {
+    const nextMuted = !muted;
+    streamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !nextMuted; });
+    setMuted(nextMuted); setStatus(nextMuted ? "Microphone muted." : "Listening…");
   }
 
   function useLocation() {
@@ -179,5 +189,10 @@ export default function PatientPage() {
     {status && <p role="status" className="pill" style={{ marginTop: 16 }}>{status}</p>}
     {emergency && <section className="danger" style={{ marginTop: 24 }}><a href="tel:112" className="button" style={{ background: "white", color: "#a91e2a", textDecoration: "none" }}>Call 112 now</a><h2 style={{ margin: "20px 0 7px", fontSize: 29 }}>This may need immediate care.</h2><p style={{ margin: 0 }}>{result?.reasoning}</p></section>}
     {result && !emergency && <section className="card" style={{ marginTop: 24, padding: 24 }}><span className="pill">{result.urgency?.replace("_", " ") ?? "Care guidance"}</span><h2 style={{ margin: "12px 0 6px", fontSize: 26 }}>{result.follow_up_question ? "One quick question" : careNames[result.care_type ?? ""] ?? "Care option"}</h2><p className="muted" style={{ lineHeight: 1.6 }}>{result.follow_up_question ?? result.reasoning}</p>{result.matched_caregivers.length > 0 && <div className="grid" style={{ marginTop: 16 }}>{result.matched_caregivers.map((caregiver) => <div key={caregiver.caregiver_id} style={{ border: "1px solid #e4ece9", borderRadius: 15, padding: 16 }}><strong>{caregiver.caregiver_id}</strong><p className="muted" style={{ margin: "7px 0 0", fontSize: 14 }}>{caregiver.reason}</p></div>)}</div>}</section>}
+    {voiceMode && <section className="voice-mode" role="dialog" aria-label="CareCompass voice conversation">
+      <div className="voice-mode-top"><span className="voice-mode-brand">✳ CareCompass</span><button type="button" className="voice-close" onClick={() => stopVoice("Voice session ended.")} aria-label="Close voice conversation">×</button></div>
+      <div className="voice-stage"><div className={`voice-orb ${speaking ? "voice-orb-speaking" : ""} ${listening && !speaking ? "voice-orb-listening" : ""}`} aria-hidden="true" /><p className="voice-status">{speaking ? "CareCompass is speaking" : muted ? "Microphone is muted" : liveTranscript || (listening ? "Listening…" : "Connecting to CareCompass…")}</p>{turns.length > 0 && <p className="voice-last-reply">{turns[turns.length - 1].content}</p>}</div>
+      <form className="voice-composer" onSubmit={sendText}><button type="button" className="voice-add" onClick={useLocation} aria-label="Use my location">+</button><textarea value={input} onChange={(event) => setInput(event.target.value)} rows={1} placeholder="Type a message" aria-label="Type a message" /><button type="button" className={`voice-mute ${muted ? "voice-mute-on" : ""}`} onClick={toggleMute} aria-label={muted ? "Unmute microphone" : "Mute microphone"}>{muted ? "⌁" : "♩"}</button><button type="submit" className="voice-send" disabled={busy || !input.trim()} aria-label="Send typed message">↑</button></form>
+    </section>}
   </main>;
 }
