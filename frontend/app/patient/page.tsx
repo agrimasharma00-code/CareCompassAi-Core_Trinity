@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { API_BASE_URL } from "../../lib/api";
 
-type Result = {
+type CareResult = {
   follow_up_question: string | null;
   care_type: string | null;
   urgency: string | null;
@@ -12,15 +12,73 @@ type Result = {
   reasoning: string;
   matched_caregivers: { caregiver_id: string; score: number; reason: string }[];
 };
-type Turn = { role: string; content: string; follow_up_question?: string };
+type AssistantResult = {
+  mode: "emergency" | "care" | "followup" | "answer" | "smalltalk" | "app_help" | "off_topic";
+  message: string;
+  care: CareResult | null;
+  language: "Hindi" | "Hinglish" | "English";
+  suggestions: string[];
+  care_context: CareContext | null;
+  spoken_message?: string | null;
+};
+type CareContext = { care_type: string; urgency: string; reasoning: string; symptoms: string[] };
+type VoiceLanguage = "hi-IN" | "en-IN";
+type AssistantLanguage = "Hindi" | "Hinglish" | "English";
+type Turn = { role: string; content: string; follow_up_question?: string; language?: VoiceLanguage; suggestions?: string[]; spoken_message?: string | null; care_context?: CareContext | null };
 
 const names: Record<string, string> = {
   paramedic_home_visit: "Medic home visit",
-  home_nursing: "Home nursing",
-  lab_test_home: "Home lab test",
+  home_nursing: "Nursing at home",
+  lab_test_home: "Lab test at home",
   teleconsultation: "Virtual doctor",
-  emergency_112: "Emergency services",
+  emergency_112: "Emergency – call 112",
 };
+
+const hindiNames: Record<string, string> = {
+  paramedic_home_visit: "घर पर मेडिक विज़िट",
+  home_nursing: "घर पर नर्सिंग सेवा",
+  lab_test_home: "घर पर लैब टेस्ट",
+  teleconsultation: "ऑनलाइन डॉक्टर से परामर्श",
+  emergency_112: "आपातकाल – 112 पर कॉल करें",
+};
+const hinglishNames: Record<string, string> = { paramedic_home_visit: "Medic home visit", home_nursing: "Ghar par nursing service", lab_test_home: "Ghar par lab test", teleconsultation: "Online doctor se salah", emergency_112: "Emergency – 112 par call karein" };
+
+function inferVoiceLanguage(text: string, detected?: string | null): VoiceLanguage {
+  if (detected?.toLowerCase().startsWith("hi") || /[\u0900-\u097f]/.test(text)) return "hi-IN";
+  const hindiMarkers = new Set(["ko", "hai", "nahi", "nahin", "mein", "se", "chahiye", "ghar", "bukhar", "khansi", "dard"]);
+  if (text.toLowerCase().split(/\W+/).some((word) => hindiMarkers.has(word))) return "hi-IN";
+  return "en-IN";
+}
+
+function spokenSummary(result: AssistantResult): string { return result.spoken_message || result.message; }
+
+function plainCareValue(value: string | null | undefined, language: AssistantLanguage = "English") {
+  const labels = language === "Hindi" ? hindiNames : language === "Hinglish" ? hinglishNames : names;
+  return labels[value || ""] || "Care option";
+}
+
+function plainUrgency(value: string | null | undefined, language: AssistantLanguage = "English") {
+  const labels: Record<string, string> = language === "Hindi"
+    ? { same_day: "आज ही", scheduled: "निर्धारित समय पर", emergency: "आपातकालीन" }
+    : language === "Hinglish" ? { same_day: "aaj hi", scheduled: "tay samay par", emergency: "emergency" } : { same_day: "same day", scheduled: "scheduled", emergency: "emergency" };
+  return labels[value || ""] || "";
+}
+
+function plainReasoning(value: string, language: AssistantLanguage, careType: string | null, urgency: string | null) {
+  if (language === "Hindi") return `आपके बताए लक्षणों के आधार पर ${plainCareValue(careType, language)} का सुझाव है। प्राथमिकता: ${plainUrgency(urgency, language)}।`;
+  if (language === "Hinglish") return `Aapki batayi problem ke hisaab se ${plainCareValue(careType, language)} suggest kiya hai. Priority: ${plainUrgency(urgency, language)}.`;
+  const careLabels: Record<string, string> = {
+    paramedic_home_visit: "Medic home visit", home_nursing: "Nursing at home", lab_test_home: "Lab test at home", teleconsultation: "Virtual doctor", emergency_112: "Emergency – call 112",
+  };
+  const urgencyLabels: Record<string, string> = { same_day: "same day", scheduled: "scheduled", emergency: "emergency" };
+  let output = value;
+  for (const [apiValue, label] of Object.entries({ ...careLabels, ...urgencyLabels })) output = output.replaceAll(apiValue, label);
+  return output;
+}
+
+const redFlagLabels: Record<string, string> = { chest_pain: "chest pain", breathlessness: "difficulty breathing", unconsciousness: "unconsciousness", severe_bleeding: "severe bleeding", stroke_symptoms: "stroke symptoms", seizure: "seizure", high_fever_infant: "high fever in an infant", suicidal_ideation: "suicidal thoughts", severe_dehydration: "severe dehydration" };
+const hindiRedFlagLabels: Record<string, string> = { chest_pain: "सीने में दर्द", breathlessness: "सांस लेने में तकलीफ़", unconsciousness: "बेहोशी", severe_bleeding: "गंभीर रक्तस्राव", stroke_symptoms: "स्ट्रोक के लक्षण", seizure: "दौरा", high_fever_infant: "शिशु को तेज़ बुखार", suicidal_ideation: "आत्महत्या के विचार", severe_dehydration: "गंभीर निर्जलीकरण" };
+const hinglishRedFlagLabels: Record<string, string> = { chest_pain: "seene mein dard", breathlessness: "saans lene mein dikkat", unconsciousness: "behoshi", severe_bleeding: "zyada bleeding", stroke_symptoms: "stroke ke signs", seizure: "daura", high_fever_infant: "shishu ko tez bukhar", suicidal_ideation: "khudkushi ke vichaar", severe_dehydration: "bahut paani ki kami" };
 
 function encodeWav(input: Float32Array, sourceRate: number): Blob {
   const targetRate = 16_000;
@@ -67,13 +125,19 @@ export default function PatientPage() {
   const [history, setHistory] = useState<Turn[]>([]);
   const [lat, setLat] = useState("28.54");
   const [lng, setLng] = useState("77.27");
-  const [result, setResult] = useState<Result | null>(null);
+  const [result, setResult] = useState<AssistantResult | null>(null);
+  const [careContext, setCareContext] = useState<CareContext | null>(null);
+  const [showCaregivers, setShowCaregivers] = useState(false);
+  const conversationEndRef = useRef<HTMLDivElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [readAloud, setReadAloud] = useState(false);
+  const [hasUsedMic, setHasUsedMic] = useState(false);
+  const readAloudRef = useRef(readAloud);
   const streamRef = useRef<MediaStream | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -83,34 +147,89 @@ export default function PatientPage() {
   const intervalRef = useRef<number | null>(null);
   const stopTimeoutRef = useRef<number | null>(null);
   const startedAtRef = useRef(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const speechRequestRef = useRef(0);
+  readAloudRef.current = readAloud;
 
-  async function submitText(message: string) {
+  function stopSpeech() {
+    speechRequestRef.current += 1;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }
+
+  async function playSpeech(text: string, language: VoiceLanguage, showError = false) {
+    stopSpeech();
+    const requestId = speechRequestRef.current;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/voice/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text.slice(0, 500), language }),
+      });
+      if (requestId !== speechRequestRef.current) return;
+      if (!response.ok) throw new Error("Spoken reply is unavailable right now.");
+      const audioUrl = URL.createObjectURL(await response.blob());
+      if (requestId !== speechRequestRef.current) {
+        URL.revokeObjectURL(audioUrl);
+        return;
+      }
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      audioUrlRef.current = audioUrl;
+      const cleanup = () => {
+        if (audioRef.current === audio) audioRef.current = null;
+        if (audioUrlRef.current === audioUrl) audioUrlRef.current = null;
+        URL.revokeObjectURL(audioUrl);
+      };
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
+      await audio.play();
+    } catch (err) {
+      if (showError && requestId === speechRequestRef.current) {
+        setError(err instanceof Error ? err.message : "Could not play the spoken reply.");
+      }
+    }
+  }
+
+  async function submitText(message: string, detectedLanguage?: string | null) {
     const trimmed = message.trim();
     if (!trimmed) return;
+    stopSpeech();
     setBusy(true);
     setError("");
-    const turns = [...history, { role: "user", content: trimmed }];
+    const responseLanguage = inferVoiceLanguage(trimmed, detectedLanguage);
+    const turns: Turn[] = [...history, { role: "user", content: trimmed, language: responseLanguage }];
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/care/intake-triage-match`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/assistant/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_input: trimmed,
-          language: "auto",
+          message: trimmed,
+          language: detectedLanguage || "auto",
           location: { lat: Number(lat), lng: Number(lng) },
-          conversation_history: history,
+          history,
+          care_context: careContext,
         }),
       });
-      if (!response.ok) throw new Error(`Care service returned ${response.status}`);
-      const data: Result = await response.json();
-      const nextHistory = data.follow_up_question
-        ? [...turns, { role: "assistant", content: data.follow_up_question, follow_up_question: data.follow_up_question }]
-        : turns;
+      if (!response.ok) throw new Error(`Assistant service returned ${response.status}`);
+      const data: AssistantResult = await response.json();
+      const nextHistory = data.mode === "care" ? turns : [...turns, { role: "assistant", content: data.message, follow_up_question: data.mode === "followup" ? data.message : undefined, language: responseLanguage, suggestions: data.suggestions, spoken_message: data.spoken_message, care_context: data.care_context }];
       setHistory(nextHistory);
       setInput("");
       setResult(data);
+      setCareContext(data.care_context);
+      setShowCaregivers(false);
+      if (readAloudRef.current) void playSpeech(spokenSummary(data), responseLanguage);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not reach the care service.");
+      setError(err instanceof Error ? err.message : "Could not reach the assistant service.");
     } finally {
       setBusy(false);
     }
@@ -138,6 +257,11 @@ export default function PatientPage() {
   }
 
   async function startRecording() {
+    stopSpeech();
+    if (!hasUsedMic) {
+      setHasUsedMic(true);
+      setReadAloud(true);
+    }
     setError("");
     if (!navigator.mediaDevices?.getUserMedia) {
       setError("Microphone access is unavailable in this browser. You can type your request instead.");
@@ -222,7 +346,7 @@ export default function PatientPage() {
       const transcript = typeof payload.transcript === "string" ? payload.transcript.trim() : "";
       if (!transcript) throw new Error("No speech was detected. Please try again or type your request.");
       setInput(transcript);
-      await submitText(transcript);
+      await submitText(transcript, payload.language_code);
     } catch (err) {
       setError(err instanceof Error ? `${err.message} You can type your request instead.` : "Voice transcription failed. You can type your request instead.");
     } finally {
@@ -244,19 +368,28 @@ export default function PatientPage() {
     );
   }
 
-  useEffect(() => () => stopTracksAndAudio(), []);
+  useEffect(() => () => {
+    stopTracksAndAudio();
+    if (audioRef.current) audioRef.current.pause();
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+  }, []);
 
-  const emergency = result?.care_type === "emergency_112";
+  useEffect(() => {
+    if (history.length) conversationEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [history, result]);
+
+  const emergency = result?.mode === "emergency" || result?.care?.care_type === "emergency_112";
+  const responseLanguage: VoiceLanguage = result?.language === "Hindi" || result?.language === "Hinglish" ? "hi-IN" : "en-IN";
   const recordingStatus = recording ? `Listening… ${formatTimer(recordingSeconds)} / 0:30` : "";
 
   return (
-    <main className="container" style={{ padding: "24px 0 60px", maxWidth: 850 }}>
+    <main className="container patient-layout" style={{ maxWidth: 850 }}>
       <Link href="/" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 700 }}>← CareCompass</Link>
       <span className="eyebrow" style={{ display: "block", marginTop: 42 }}>Care intake</span>
       <h1 style={{ fontSize: "clamp(36px, 6vw, 56px)", margin: "10px 0" }}>Let’s find the right care.</h1>
       <p className="muted" style={{ fontSize: 17 }}>Share what support you need. This service routes care and does not diagnose or prescribe.</p>
 
-      <section className="card" style={{ padding: 24, marginTop: 26 }}>
+      <section className="card patient-composer" style={{ padding: 24, marginTop: 26 }}>
         <form onSubmit={send}>
           <label htmlFor="message" style={{ fontWeight: 700 }}>What’s going on?</label>
           <div className="intake-composer">
@@ -285,6 +418,16 @@ export default function PatientPage() {
               {recording ? recordingStatus : "Transcribing…"}
             </p>
           )}
+          <label className="read-aloud-toggle">
+            <input
+              type="checkbox"
+              checked={readAloud}
+              onChange={(event) => setReadAloud(event.target.checked)}
+              aria-label="Read aloud"
+            />
+            <span>Read aloud</span>
+            {!hasUsedMic && <span className="muted read-aloud-hint">Voice replies turn on after your first mic use</span>}
+          </label>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 17 }}>
             <button type="button" onClick={useLocation} className="button" style={{ background: "#e7f5f2", color: "var(--teal)" }}>◎ Use my location</button>
             <label className="muted">Lat <input aria-label="Latitude" value={lat} onChange={(event) => setLat(event.target.value)} style={{ width: 90, padding: 8, border: "1px solid #dce7e4", borderRadius: 8 }} /></label>
@@ -296,50 +439,57 @@ export default function PatientPage() {
       </section>
 
       {history.length > 0 && (
-        <section aria-label="Conversation" style={{ marginTop: 20 }}>
+        <section aria-label="Conversation" className="patient-history" style={{ marginTop: 20 }}>
           {history.map((turn, index) => (
             <div key={index} style={{ textAlign: turn.role === "user" ? "right" : "left", margin: "10px 0" }}>
-              <span className="card" style={{ display: "inline-block", padding: "12px 16px", maxWidth: "85%" }}>{turn.content}</span>
+              <span className="card conversation-bubble" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 16px", maxWidth: "85%" }}>
+                {turn.content}
+                {turn.role === "assistant" && <button type="button" className="speaker-button" aria-label="Read this message aloud" title="Read this message aloud" onClick={() => void playSpeech(turn.spoken_message || turn.content, turn.language || "en-IN", true)}>🔊</button>}
+              </span>
+              {turn.role === "assistant" && !!turn.suggestions?.length && <div style={{ display: "flex", justifyContent: "flex-start", flexWrap: "wrap", gap: 8, marginTop: 8 }}>{turn.suggestions.map((suggestion) => <button key={suggestion} type="button" className="pill" disabled={busy || transcribing} onClick={() => void submitText(suggestion)} style={{ border: "1px solid #cfe2dd", cursor: "pointer", background: "white" }}>{suggestion}</button>)}</div>}
             </div>
           ))}
         </section>
       )}
 
       {result && (
-        <section style={{ marginTop: 24 }}>
+        <section className="patient-result" style={{ marginTop: 24 }}>
           {emergency ? (
             <div className="danger">
-              <a href="tel:112" className="button" style={{ background: "white", color: "#a91e2a", fontSize: 22, textDecoration: "none", display: "inline-block", marginBottom: 20 }}>Call 112</a>
-              <h2 style={{ fontSize: 30, margin: "0 0 8px" }}>Please contact emergency services now.</h2>
-              <p style={{ margin: 0 }}>These symptoms may need urgent emergency attention. CareCompass cannot provide emergency care.</p>
-              {result.red_flags.length > 0 && <p>Red flags: {result.red_flags.join(", ")}</p>}
+              <a href="tel:112" className="button" style={{ background: "white", color: "#a91e2a", fontSize: 22, textDecoration: "none", display: "inline-block", marginBottom: 20 }}>{result.language === "Hindi" ? "112 पर कॉल करें" : result.language === "Hinglish" ? "112 par call karein" : "Call 112"}</a>
+              <h2 style={{ fontSize: 30, margin: "0 0 8px" }}>{result.message}</h2>
+              <p style={{ margin: 0 }}>{result.language === "Hindi" ? "यह ऐप आपकी ओर से आपातकालीन सेवाओं को कॉल नहीं कर सकती।" : result.language === "Hinglish" ? "Yeh app aapki taraf se emergency services ko call nahi kar sakti." : "CareCompass cannot call emergency services for you."}</p>
+              {(result.care?.red_flags || []).length > 0 && <p>{result.language === "Hindi" ? "खतरे के संकेत:" : result.language === "Hinglish" ? "Khatre ke signs:" : "Red flags:"} {result.care?.red_flags.map((flag) => (result.language === "Hindi" ? hindiRedFlagLabels[flag] : result.language === "Hinglish" ? hinglishRedFlagLabels[flag] : redFlagLabels[flag]) || flag).join(", ")}</p>}
             </div>
-          ) : (
+          ) : result.mode === "care" && result.care ? (
             <article className="card" style={{ padding: 24 }}>
-              {result.follow_up_question ? (
-                <><span className="pill">One more detail</span><p style={{ fontSize: 19, lineHeight: 1.5 }}>{result.follow_up_question}</p></>
-              ) : (
-                <>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                    <h2 style={{ margin: "0 auto 0 0", fontSize: 27 }}>{names[result.care_type || ""] || "Care option"}</h2>
-                    <span className="pill">{result.urgency?.replace("_", " ")}</span>
-                  </div>
-                  <p className="muted" style={{ lineHeight: 1.6 }}>{result.reasoning}</p>
-                  {result.red_flags.length > 0 && <p style={{ color: "#a91e2a", fontWeight: 700 }}>Red flags: {result.red_flags.join(", ")}</p>}
-                  {result.matched_caregivers.length > 0 && (
-                    <><h3>Available caregivers</h3><div className="grid">{result.matched_caregivers.map((caregiver) => (
+              <p style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 0, fontWeight: 700 }}>
+                {result.message}
+                <button type="button" className="speaker-button" aria-label="Read care summary aloud" title="Read care summary aloud" onClick={() => void playSpeech(spokenSummary(result), responseLanguage, true)}>🔊</button>
+              </p>
+              {!!result.suggestions.length && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>{result.suggestions.map((suggestion) => <button key={suggestion} type="button" className="pill" disabled={busy || transcribing} onClick={() => void submitText(suggestion)} style={{ border: "1px solid #cfe2dd", cursor: "pointer", background: "white" }}>{suggestion}</button>)}</div>}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <h2 style={{ margin: "0 auto 0 0", fontSize: 27 }}>{plainCareValue(result.care.care_type, result.language)}</h2>
+                <span className="pill">{plainUrgency(result.care.urgency, result.language)}</span>
+              </div>
+              <p className="muted" style={{ lineHeight: 1.6 }}>{plainReasoning(result.care.reasoning, result.language, result.care.care_type, result.care.urgency)}</p>
+              {result.care.red_flags.length > 0 && <p style={{ color: "#a91e2a", fontWeight: 700 }}>{result.language === "Hindi" ? "खतरे के संकेत:" : result.language === "Hinglish" ? "Khatre ke signs:" : "Red flags:"} {result.care.red_flags.map((flag) => (result.language === "Hindi" ? hindiRedFlagLabels[flag] : result.language === "Hinglish" ? hinglishRedFlagLabels[flag] : redFlagLabels[flag]) || flag).join(", ")}</p>}
+              {result.care.matched_caregivers.length > 0 && <>
+                <button type="button" className="button" aria-expanded={showCaregivers} onClick={() => setShowCaregivers((visible) => !visible)} style={{ marginTop: 10 }}>
+                  {showCaregivers ? (result.language === "Hindi" ? "उपलब्ध देखभालकर्ता छिपाएँ" : result.language === "Hinglish" ? "Available caregivers chhupayein" : "Hide available caregivers") : result.language === "Hindi" ? `उपलब्ध देखभालकर्ता दिखाएँ (${result.care.matched_caregivers.length})` : result.language === "Hinglish" ? `Available caregivers dikhayein (${result.care.matched_caregivers.length})` : `Show available caregivers (${result.care.matched_caregivers.length})`}
+                </button>
+                {showCaregivers && <div className="grid" style={{ marginTop: 16 }}>{result.care.matched_caregivers.map((caregiver) => (
                       <div key={caregiver.caregiver_id} style={{ border: "1px solid #e4ece9", borderRadius: 15, padding: 16, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                         <div><strong>{caregiver.caregiver_id}</strong><div className="muted" style={{ fontSize: 14, marginTop: 4 }}>{caregiver.reason}</div></div>
                         <div style={{ textAlign: "right" }}><span className="pill">{caregiver.score.toFixed(2)}</span><br /><button onClick={() => { setToast("Booking will be available soon."); setTimeout(() => setToast(""), 2600); }} style={{ border: 0, background: "none", color: "var(--teal)", fontWeight: 700, cursor: "pointer", marginTop: 8 }}>Book</button></div>
                       </div>
-                    ))}</div></>
-                  )}
-                </>
-              )}
+                ))}</div>}
+              </>}
             </article>
-          )}
+          ) : null}
         </section>
       )}
+      <div ref={conversationEndRef} aria-hidden="true" style={{ order: 2, height: 1 }} />
       {toast && <div role="status" className="pill" style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", padding: 14 }}>{toast}</div>}
     </main>
   );
