@@ -16,7 +16,9 @@ app.add_middleware(
     CORSMiddleware,
     # Browsers treat localhost and 127.0.0.1 as different origins.
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_methods=["GET", "POST"],
+    # Explicitly allow browser preflight; sign-in POSTs use JSON and therefore
+    # require an OPTIONS request before the browser sends credentials.
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 app.include_router(care_router)
