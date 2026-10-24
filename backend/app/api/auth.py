@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.core.loaders import load_caregivers
+
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 SECRET = b"carecompass-demo-only-not-for-production"
@@ -18,6 +20,19 @@ ROLES = {"patient", "hospital", "ambulance"}
 class DemoLogin(BaseModel):
     role: str
     identifier: str
+
+
+def provider_accounts() -> list[dict[str, object]]:
+    """Expose dataset-backed demo provider identities to the role switcher."""
+    return [
+        {
+            "caregiver_id": profile["id"],
+            "role": profile["role"],
+            "languages": profile["languages"],
+            "skills": profile["skills"],
+        }
+        for profile in load_caregivers()
+    ]
 
 
 def _part(value: bytes) -> str:
@@ -35,4 +50,13 @@ def issue_token(role: str, identifier: str) -> str:
 def demo_login(payload: DemoLogin) -> dict[str, str]:
     if payload.role not in ROLES or not payload.identifier.strip():
         raise HTTPException(status_code=400, detail="Choose a valid demo role and identifier.")
-    return {"access_token": issue_token(payload.role, payload.identifier.strip()), "token_type": "bearer", "role": payload.role}
+    identifier = payload.identifier.strip()
+    caregiver_ids = {str(account["caregiver_id"]) for account in provider_accounts()}
+    if payload.role == "hospital" and identifier not in caregiver_ids:
+        raise HTTPException(status_code=400, detail="Choose a provider profile from the supplied caregiver dataset.")
+    return {"access_token": issue_token(payload.role, identifier), "token_type": "bearer", "role": payload.role, "caregiver_id": identifier if payload.role == "hospital" else ""}
+
+
+@router.get("/provider-accounts")
+def get_provider_accounts() -> list[dict[str, object]]:
+    return provider_accounts()

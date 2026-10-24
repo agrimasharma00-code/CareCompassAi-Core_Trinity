@@ -24,10 +24,10 @@ def build_reasoning(text: str, facts: IntakeFacts, red_flags: list[str] | None =
 
 def safety_netting(red_flags: list[str], urgency: str | None) -> str:
     if red_flags or urgency == "immediate":
-        return "Call 112 now. Do not wait for a home visit or a reply from this demo service."
+        return "Call 5555 now. Do not wait for a home visit or a reply from this demo service."
     if urgency == "same_day":
-        return "If breathing trouble, chest pain, fainting, heavy bleeding, a seizure, or sudden worsening appears, call 112 immediately."
-    return "If symptoms worsen or any breathing trouble, chest pain, fainting, heavy bleeding, or seizure appears, call 112 immediately."
+        return "If breathing trouble, chest pain, fainting, heavy bleeding, a seizure, or sudden worsening appears, call 5555 immediately."
+    return "If symptoms worsen or any breathing trouble, chest pain, fainting, heavy bleeding, or seizure appears, call 5555 immediately."
 
 
 def why_not_explanation(red_flags: list[str], care_type: str | None) -> str:
