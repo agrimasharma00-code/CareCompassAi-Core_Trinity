@@ -1,0 +1,1 @@
+"""CareCompass backend package."""
