@@ -8,7 +8,7 @@ from sarvamai import AsyncSarvamAI, RealtimeAudioInput
 from app.api.care import pipeline
 from app.api.voice import _sarvam_audio_reply
 from app.config import settings
-from app.schemas.care import CareRequest, Language, Location
+from app.schemas.care import CareRequest, ConversationTurn, Language, Location
 
 
 router = APIRouter(prefix="/api/v1/voice", tags=["voice"])
@@ -23,6 +23,7 @@ async def realtime_voice(socket: WebSocket) -> None:
         await socket.close(code=1011)
         return
     client = AsyncSarvamAI(api_subscription_key=settings.sarvam_api_key)
+    history: list[ConversationTurn] = []
     try:
         async with client.speech_to_text_realtime_streaming.connect(
             language_code="auto",
@@ -54,8 +55,18 @@ async def realtime_voice(socket: WebSocket) -> None:
                         if not transcript:
                             continue
                         language = Language.HI if str(getattr(event, "language", "")).startswith("hi") else Language.AUTO
-                        result = pipeline.run(CareRequest(user_input=transcript, language=language, location=Location(lat=28.545, lng=77.192)))
+                        result = pipeline.run(
+                            CareRequest(
+                                user_input=transcript,
+                                language=language,
+                                location=Location(lat=28.545, lng=77.192),
+                                conversation_history=history,
+                            )
+                        )
+                        history.append(ConversationTurn(role="user", content=transcript))
                         spoken_text = result.follow_up_question or result.reasoning
+                        if result.follow_up_question:
+                            history.append(ConversationTurn(role="assistant", content=result.follow_up_question))
                         audio = await _sarvam_audio_reply(spoken_text, "hi-IN" if language == Language.HI else "en-IN")
                         await socket.send_json({
                             "type": "final",
