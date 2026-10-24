@@ -16,16 +16,6 @@ async def _sarvam_audio_reply(text: str, language_code: str) -> str | None:
     """Synthesize a short route summary; TTS failure must not block routing."""
     if not settings.sarvam_api_key:
         return None
-
-
-@router.post("/speak")
-async def speak_reply(payload: dict[str, str]) -> dict[str, str | None]:
-    """Generate a private, server-authenticated Sarvam voice response."""
-    text = payload.get("text", "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Text is required.")
-    audio = await _sarvam_audio_reply(text, payload.get("language_code", "en-IN"))
-    return {"audio_base64": audio, "audio_mime_type": "audio/wav" if audio else None}
     payload = {
         "text": text[:2500],
         "language_code": language_code if language_code in {"en-IN", "hi-IN"} else "en-IN",
@@ -44,6 +34,16 @@ async def speak_reply(payload: dict[str, str]) -> dict[str, str | None]:
             return response.json().get("audios", [None])[0]
     except (httpx.HTTPError, ValueError, KeyError, IndexError):
         return None
+
+
+@router.post("/speak")
+async def speak_reply(payload: dict[str, str]) -> dict[str, str | None]:
+    """Generate a private, server-authenticated Sarvam voice response."""
+    text = payload.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required.")
+    audio = await _sarvam_audio_reply(text, payload.get("language_code", "en-IN"))
+    return {"audio_base64": audio, "audio_mime_type": "audio/wav" if audio else None}
 
 
 @router.post("/respond")
