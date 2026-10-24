@@ -14,6 +14,7 @@ class Language(str, Enum):
 
 class CareType(str, Enum):
     PARAMEDIC_HOME_VISIT = "paramedic_home_visit"
+    LAB_TEST_HOME = "lab_test_home"
     NURSE = "nurse"
     GP_TELECONSULT = "gp_teleconsult"
     SPECIALIST = "specialist"

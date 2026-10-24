@@ -23,7 +23,9 @@ def _fallback(text: str) -> TriageResult:
     lower = text.lower()
     if any(word in lower for word in ("nurse", "dressing", "wound")):
         return TriageResult("nurse", "routine", 0.55, 0.05)
-    if any(word in lower for word in ("sample collection", "blood sample", "home visit", "vitals")):
+    if any(word in lower for word in ("sample collection", "blood sample", "lab test", "blood test")):
+        return TriageResult("lab_test_home", "routine", 0.55, 0.05)
+    if any(word in lower for word in ("home visit", "vitals")):
         return TriageResult("paramedic_home_visit", "same_day", 0.55, 0.12)
     if any(word in lower for word in ("skin", "diabetes", "joint")):
         return TriageResult("specialist", "routine", 0.55, 0.05)

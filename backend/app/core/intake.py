@@ -80,7 +80,8 @@ def extract_facts(text: str, requested_language: Language) -> IntakeFacts:
     age_match = re.search(r"\b(\d{1,3})\s*(?:years? old|yr(?:s)?|saal)\b", lower)
     relation_match = re.search(r"\b(papa|father|dad|mummy|mother|mom|dadi|grandmother|baby|child|infant)\b", lower)
     service_patterns = {
-        "paramedic_home_visit": ("home visit", "sample collection", "blood sample", "vitals"),
+        "paramedic_home_visit": ("home visit", "vitals"),
+        "lab_test_home": ("sample collection", "blood sample", "lab test", "blood test"),
         "nurse": ("nurse", "dressing", "wound care"),
         "gp_teleconsult": ("teleconsult", "video consult", "doctor call"),
     }
@@ -105,7 +106,9 @@ def next_follow_up(
     force_final: bool = False,
 ) -> str | None:
     """Return one non-repeated question, with a maximum of three across a chat."""
-    if force_final or confidence >= 0.7:
+    # A clearly requested service (for example, home sample collection) is
+    # already actionable; avoid asking a generic symptom-duration question.
+    if force_final or facts.requested_service or confidence >= 0.7:
         return None
     prior_text = " ".join(turn.content.lower() for turn in history)
     prior_questions = sum(1 for turn in history if turn.role.lower() == "assistant" and "?" in turn.content)

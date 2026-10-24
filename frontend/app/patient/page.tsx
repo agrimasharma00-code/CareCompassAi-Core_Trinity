@@ -10,7 +10,7 @@ type CareResult = { follow_up_question: string | null; care_type: string | null;
 type Turn = { role: "user" | "assistant"; content: string };
 type VoiceMessage = { type: string; text?: string; transcript?: string; response?: CareResult; agent_reply?: string; audio_base64?: string; audio_mime_type?: string; message?: string };
 
-const careNames: Record<string, string> = { paramedic_home_visit: "Medic home visit", nurse: "Home nursing support", gp_teleconsult: "Virtual GP consultation", specialist: "Specialist consultation", emergency_referral: "Emergency support" };
+const careNames: Record<string, string> = { paramedic_home_visit: "Medic home visit", lab_test_home: "Home lab test", nurse: "Home nursing support", gp_teleconsult: "Virtual GP consultation", specialist: "Specialist consultation", emergency_referral: "Emergency support" };
 
 export default function PatientPage() {
   const [input, setInput] = useState("");
@@ -28,9 +28,30 @@ export default function PatientPage() {
   const processorRef = useRef<AudioNode | null>(null);
   const speakingRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   function playAgentAudio(audioBase64?: string, mimeType?: string, fallbackText?: string) {
     if (!audioBase64 || !mimeType) { setStatus(fallbackText ?? "Care guidance is ready."); return; }
+    const context = contextRef.current;
+    if (context && context.state !== "closed") {
+      const finish = () => {
+        speakingRef.current = false; setSpeaking(false);
+        setStatus(socketRef.current?.readyState === WebSocket.OPEN ? "Listening — tell me more, or tap End." : "Care guidance is ready.");
+      };
+      try {
+        const binary = atob(audioBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+        void context.decodeAudioData(bytes.buffer).then((buffer) => {
+          audioSourceRef.current?.stop();
+          const source = context.createBufferSource(); source.buffer = buffer; source.connect(context.destination);
+          audioSourceRef.current = source; speakingRef.current = true; setSpeaking(true); setStatus("CareCompass is speaking…");
+          source.onended = () => { if (audioSourceRef.current === source) { audioSourceRef.current = null; finish(); } };
+          source.start();
+        }).catch(() => setStatus(`${fallbackText ?? "Care guidance is ready."} Audio could not be decoded.`));
+        return;
+      } catch { setStatus(`${fallbackText ?? "Care guidance is ready."} Audio could not be decoded.`); return; }
+    }
     const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
     const finish = () => {
       if (audioRef.current !== audio) return;
@@ -63,7 +84,7 @@ export default function PatientPage() {
   }
 
   function stopVoice(message = "Voice session ended.") {
-    audioRef.current?.pause(); audioRef.current = null; speakingRef.current = false; setSpeaking(false);
+    audioRef.current?.pause(); audioRef.current = null; audioSourceRef.current?.stop(); audioSourceRef.current = null; speakingRef.current = false; setSpeaking(false);
     processorRef.current?.disconnect(); void contextRef.current?.close(); streamRef.current?.getTracks().forEach((track) => track.stop());
     if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send("end");
     socketRef.current?.close(); socketRef.current = null; streamRef.current = null; contextRef.current = null; processorRef.current = null;
@@ -72,11 +93,14 @@ export default function PatientPage() {
 
   async function startVoice() {
     if (listening) { stopVoice(); return; }
+    // Create and resume this synchronously inside the user click. Browsers then
+    // permit Sarvam audio that arrives asynchronously over the WebSocket.
+    const context = new AudioContext(); contextRef.current = context; void context.resume();
     try {
       const health = await fetch(`${API_BASE_URL}/health`);
       if (!health.ok) throw new Error("The CareCompass backend is unavailable.");
+      await context.resume();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-      const context = new AudioContext(); await context.resume();
       const socket = new WebSocket(`${API_BASE_URL.replace(/^http/, "ws")}/api/v1/voice/realtime`);
       socket.binaryType = "arraybuffer"; socketRef.current = socket; streamRef.current = stream;
       socket.onmessage = (event) => {
@@ -121,9 +145,10 @@ export default function PatientPage() {
           processor.port.onmessage = (event: MessageEvent<Float32Array>) => sendPcm(event.data);
           source.connect(processor); processor.connect(silentOutput); processorRef.current = processor;
         } catch { legacyProcessor(); }
-        silentOutput.connect(context.destination); contextRef.current = context; setListening(true); setStatus("Connecting to Sarvam… speak after the greeting.");
+        silentOutput.connect(context.destination); setListening(true); setStatus("Connecting to Sarvam… speak after the greeting.");
       };
     } catch (error) {
+      void contextRef.current?.close(); contextRef.current = null;
       const message = error instanceof Error ? error.message : "Microphone access is required for voice guidance.";
       setStatus(message === "Failed to fetch" ? "The browser could not reach CareCompass. Start the backend, then try again." : message);
     }
@@ -139,7 +164,7 @@ export default function PatientPage() {
 
   const emergency = result?.care_type === "emergency_referral";
   return <main className="container" style={{ maxWidth: 900, padding: "24px 0 64px" }}>
-    <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}><Link href="/" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 700 }}>← CareCompass AI</Link><span className="pill">Sarvam-powered</span></header>
+    <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}><Link href="/" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 700 }}>← CareCompass AI</Link></header>
     <section style={{ marginTop: 42, maxWidth: 710 }}><span className="eyebrow">CareAgent Nexus</span><h1 style={{ fontSize: "clamp(36px, 6vw, 58px)", margin: "10px 0" }}>Let&apos;s find the right care.</h1><p className="muted" style={{ fontSize: 18, lineHeight: 1.6 }}>Speak or type in English, Hindi, or Hinglish. CareCompass helps navigate care; it does not diagnose or prescribe.</p></section>
     <section className="card" style={{ marginTop: 28, padding: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><div><span className="eyebrow">Live voice conversation</span><h2 style={{ margin: "7px 0 0", fontSize: 26 }}>Talk to CareCompass</h2></div><button type="button" onClick={startVoice} disabled={busy} className="button" style={{ background: listening ? "#a91e2a" : "var(--teal)" }}>{listening ? (speaking ? "CareCompass is speaking…" : "■ End voice") : "● Talk to CareCompass"}</button></div>

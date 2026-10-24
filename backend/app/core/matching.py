@@ -25,7 +25,7 @@ def haversine_km(origin: Location, lat: float, lng: float) -> float:
 
 def inferred_skill(text: str) -> str | None:
     lower = text.lower()
-    mapping = {"fever": "fever", "bukhar": "fever", "cough": "cough", "khansi": "cough", "wound": "wound_care", "dressing": "wound_care"}
+    mapping = {"fever": "fever", "bukhar": "fever", "cough": "cough", "khansi": "cough", "wound": "wound_dressing", "dressing": "wound_dressing", "blood sample": "sample_collection", "lab test": "sample_collection"}
     return next((skill for marker, skill in mapping.items() if marker in lower), None)
 
 
@@ -52,7 +52,8 @@ def _score(profile: dict, distance_km: float, language: str, skill: str | None) 
 def _reason(profile: dict, distance_km: float, language: str) -> str:
     pieces: list[str] = []
     if language in profile["languages"]:
-        pieces.append(f"{language.title()}-speaking")
+        display_language = {"hi": "Hindi", "en": "English", "hinglish": "Hinglish"}.get(language, language.title())
+        pieces.append(f"{display_language}-speaking")
     pieces.append(f"{distance_km:.1f} km away")
     pieces.append(f"free {profile['available_slots'][0]}")
     return ", ".join(pieces)
@@ -64,7 +65,9 @@ def match_caregivers(care_type: str, location: Location, language: str, text: st
     eligible: list[tuple[dict, float]] = []
     for profile in load_caregivers():
         distance_km = haversine_km(location, profile["lat"], profile["lng"])
-        if profile["role"] != care_type or not profile["available_slots"] or distance_km > settings.max_distance_km:
+        care_types = profile.get("care_types", (profile["role"],))
+        is_virtual = care_type in {"gp_teleconsult", "specialist"}
+        if care_type not in care_types or not profile["available_slots"] or (not is_virtual and distance_km > min(settings.max_distance_km, profile.get("max_radius_km", settings.max_distance_km))):
             continue
         if skill is not None and skill not in profile["skills"]:
             continue
