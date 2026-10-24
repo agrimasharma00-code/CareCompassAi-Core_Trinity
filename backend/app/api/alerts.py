@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,6 +19,7 @@ class AlertCreate(BaseModel):
     longitude: float
     red_flags: list[str] = Field(default_factory=list)
     summary: str = Field(min_length=1, max_length=500)
+    language: Literal["Hindi", "Hinglish", "English"] = "English"
 
 
 class AlertUpdate(BaseModel):
@@ -27,14 +28,25 @@ class AlertUpdate(BaseModel):
 
 def _data(alert: Alert, session: Session) -> dict:
     patient = session.get(User, alert.patient_id)
-    return {"id": alert.id, "patient_id": alert.patient_id, "patient_name": patient.name if patient else "", "latitude": alert.latitude, "longitude": alert.longitude, "red_flags": alert.red_flags or [], "summary": alert.summary, "status": alert.status, "created_at": alert.created_at.isoformat(), "updated_at": alert.updated_at.isoformat()}
+    created = alert.created_at
+    updated = alert.updated_at
+    if created.tzinfo is None: created = created.replace(tzinfo=timezone.utc)
+    if updated.tzinfo is None: updated = updated.replace(tzinfo=timezone.utc)
+    return {"id": alert.id, "patient_id": alert.patient_id, "patient_name": patient.name if patient else "", "latitude": alert.latitude, "longitude": alert.longitude, "red_flags": alert.red_flags or ["emergency_suspected"], "summary": alert.summary, "language": alert.language, "status": alert.status, "created_at": created.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"), "updated_at": updated.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")}
 
 
 @router.post("")
 def create_alert(request: AlertCreate, patient: User = Depends(require_role("patient")), session: Session = Depends(get_db)):
     if not (-90 <= request.latitude <= 90 and -180 <= request.longitude <= 180):
         raise HTTPException(status_code=422, detail="Location coordinates are invalid")
-    alert = Alert(patient_id=patient.id, latitude=request.latitude, longitude=request.longitude, red_flags=request.red_flags[:12], summary=request.summary.strip(), status="new")
+    open_statuses = ("new", "accepted", "en_route")
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+    existing = session.scalars(select(Alert).where(Alert.patient_id == patient.id, Alert.status.in_(open_statuses)).order_by(Alert.created_at.desc())).first()
+    if existing is not None:
+        existing_time = existing.created_at.replace(tzinfo=timezone.utc) if existing.created_at.tzinfo is None else existing.created_at
+        if existing_time >= cutoff:
+            return _data(existing, session)
+    alert = Alert(patient_id=patient.id, latitude=request.latitude, longitude=request.longitude, red_flags=request.red_flags[:12] or ["emergency_suspected"], summary=request.summary.strip(), language=request.language, status="new", created_at=datetime.now(timezone.utc))
     session.add(alert)
     session.flush()
     dispatch_ids = list(session.scalars(select(User.id).where(User.role == "dispatch")))
@@ -60,6 +72,11 @@ def incoming_alerts(dispatch: User = Depends(require_role("dispatch")), session:
     return [_data(alert, session) for alert in alerts]
 
 
+@router.get("")
+def list_alerts(dispatch: User = Depends(require_role("dispatch")), session: Session = Depends(get_db)):
+    return incoming_alerts(dispatch, session)
+
+
 @router.patch("/{alert_id}")
 def update_alert(alert_id: int, request: AlertUpdate, dispatch: User = Depends(require_role("dispatch")), session: Session = Depends(get_db)):
     alert = session.get(Alert, alert_id)
@@ -77,6 +94,7 @@ def update_alert(alert_id: int, request: AlertUpdate, dispatch: User = Depends(r
     session.commit()
     session.refresh(alert)
     payload = _data(alert, session)
-    manager.publish_from_sync([alert.patient_id, dispatch.id], {"type": "alert.updated", "alert": payload})
+    dispatch_ids = list(session.scalars(select(User.id).where(User.role == "dispatch")))
+    manager.publish_from_sync([alert.patient_id, *dispatch_ids], {"type": "alert.updated", "alert": payload})
     return payload
 

@@ -1,19 +1,30 @@
 services:
   backend:
     build: ./backend
-    env_file:
-      - path: ./backend/.env
-        required: false
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: sqlite:////app/db/carecompass.db
     ports:
       - "8000:8000"
     volumes:
       - ./backend/data:/app/data:ro
-      - ./backend/models:/app/models
+      - carecompass-db:/app/db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
   frontend:
     build: ./frontend
+    env_file: ./frontend/.env.local
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+
+volumes:
+  carecompass-db:

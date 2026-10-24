@@ -1,0 +1,12 @@
+{
+  "synthetic_data": true,
+  "split": "5-fold GroupKFold by normalized request text",
+  "rows": 340,
+  "groups": 65,
+  "care_type_macro_f1_selected_oof": 0.6414699835546308,
+  "care_type_macro_f1_keyword_prior": 0.7974682299018583,
+  "care_type_macro_f1_keyword_and_red_flags": 0.8115670487704386,
+  "urgency_macro_f1_model": 0.869400999239709,
+  "emergency_recall_after_red_flag_rules": 1.0,
+  "under_triage_count": 0
+}

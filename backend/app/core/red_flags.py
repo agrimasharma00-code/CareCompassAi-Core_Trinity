@@ -17,3 +17,19 @@ def check(text):
  for label,ps in PATTERNS.items():
   if any(re.search(p,t) for p in ps) and not any(re.search(p,t) for p in NEG.get(label,[])):found.append(label)
  return found
+
+
+def check_wellness_crisis(text: str) -> list[str]:
+ """Wellness crisis cues kept beside the shared safety vocabulary.
+
+ This helper is used by the unscored wellness route. The scored triage check()
+ and its response schema remain unchanged.
+ """
+ patterns = [
+  r"\bi do not want to live\b", r"\bi don't want to live\b", r"\bdont want to live\b",
+  r"\bself[- ]harm\b", r"\bhurt myself\b", r"\bkill myself\b", r"\bsuicid(?:e|al)\b",
+  r"\bkhudkushi\b", r"\bkhud ko nuksan\b", r"\bmarna chahta(?: hoon)?\b", r"\bmarna chahti(?: hoon)?\b",
+  r"जीना नहीं चाहता", r"जीना नहीं चाहती", r"खुद को नुकसान", r"आत्महत्या", r"मरना चाहता", r"मरना चाहती",
+  r"jeena nahi chahta", r"jeena nahi chahti", r"khud ko nuksan"
+ ]
+ return ["suicidal_ideation"] if any(re.search(pattern, text, re.I) for pattern in patterns) else []

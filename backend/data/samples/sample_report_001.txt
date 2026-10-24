@@ -1,0 +1,5 @@
+SYNTHETIC SAMPLE REPORT 001 — NOT A REAL PATIENT
+Collected for the CareCompass PathoVision parser demo.
+Hemoglobin | 12.8 | g/dL | 12.0–16.0
+WBC | 7.1 | 10^9/L | 4.0–11.0
+Glucose fasting | 108 | mg/dL | 70–99

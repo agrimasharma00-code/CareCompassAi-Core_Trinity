@@ -9,7 +9,7 @@ from app.api.auth import require_role
 from app.core.pipeline import run as run_triage
 from app.core.red_flags import check as check_red_flags
 from app.db.database import get_db
-from app.db.models import Booking, CheckIn, Event, User, utc_now
+from app.db.models import Alert, Booking, CheckIn, Event, User, utc_now
 from app.realtime import manager
 from app.schemas.care import IntakeRequest, Location
 
@@ -41,7 +41,7 @@ def simulate_checkin(checkin_id: int, request: CheckInAnswer, patient: User = De
     choice = request.answer.strip().lower()
     prompts = {"worse": "It is getting worse", "same": "It is the same", "better": "It is getting better"}
     answer_text = prompts.get(choice, request.answer.strip())
-    flags = check_red_flags(answer_text)
+    flags = check_red_flags(f"{booking.handoff_summary} {answer_text}")
     # Run the same triage pipeline over the recorded care context and check-in answer.
     care = run_triage(IntakeRequest(user_input=answer_text, language="auto", location=Location(lat=0, lng=0), conversation_history=[{"role": "user", "content": booking.handoff_summary}]))
     emergency = bool(flags) or choice == "worse" or care.get("care_type") == "emergency_112"
@@ -52,7 +52,17 @@ def simulate_checkin(checkin_id: int, request: CheckInAnswer, patient: User = De
         item.state = choice if choice in {"same", "better"} else "same"
     item.answer = choice if choice in {"worse", "same", "better"} else "red_flag" if flags else "same"
     session.add(Event(user_id=patient.id, event_type="checkin.answered", entity_type="checkin", entity_id=item.id, payload={"answer": item.answer, "emergency": emergency, "care_type": care.get("care_type")}))
+    alert_payload = None
+    if emergency and booking.patient_latitude is not None and booking.patient_longitude is not None:
+        alert = Alert(patient_id=patient.id, latitude=booking.patient_latitude, longitude=booking.patient_longitude, red_flags=flags or ["worsening_symptoms"], summary=booking.handoff_summary[:500] or "Emergency concern reported during demo check-in", language="English", status="new")
+        session.add(alert)
+        session.flush()
+        dispatch_ids = list(session.scalars(select(User.id).where(User.role == "dispatch")))
+        alert_payload = {"id": alert.id, "patient_id": patient.id, "patient_name": patient.name, "latitude": alert.latitude, "longitude": alert.longitude, "red_flags": alert.red_flags, "summary": alert.summary, "language": alert.language, "status": alert.status, "created_at": alert.created_at.isoformat(), "updated_at": alert.updated_at.isoformat()}
+        session.add_all([Event(user_id=uid, event_type="alert.created", entity_type="alert", entity_id=alert.id, payload=alert_payload) for uid in [patient.id, *dispatch_ids]])
     session.commit()
     manager.publish_from_sync([patient.id], {"type": "checkin.updated", "checkin": {"id": item.id, "booking_id": item.booking_id, "state": item.state, "answer": item.answer, "emergency": emergency, "care": care}})
+    if alert_payload:
+        manager.publish_from_sync([patient.id, *dispatch_ids], {"type": "alert.created", "alert": alert_payload})
     return {"id": item.id, "booking_id": item.booking_id, "state": item.state, "answer": item.answer, "emergency": emergency, "care": care, "message": "Please call 112 now. You can also alert the demo dispatch desk." if emergency else ("Your existing booking remains active." if item.answer == "same" else "Your improvement has been noted."), "red_flags": flags}
 

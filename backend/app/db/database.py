@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import os
 import secrets
 from pathlib import Path
 from typing import Iterator
@@ -79,6 +80,10 @@ def seed_demo_accounts(session: Session, password: str, caregivers_csv: Path = C
 
 def initialize_database(*, target_engine: Engine = engine, demo_password: str | None = None) -> int:
     """Create all tables and seed demo accounts when a password is configured."""
+    if target_engine.dialect.name == "sqlite":
+        database_file = target_engine.url.database
+        if database_file and database_file != ":memory:":
+            os.makedirs(os.path.dirname(os.path.abspath(database_file)), exist_ok=True)
     Base.metadata.create_all(target_engine)
     # Upgrade existing demo SQLite files created before optional booking coordinates were added.
     if target_engine.dialect.name == "sqlite":
@@ -89,6 +94,9 @@ def initialize_database(*, target_engine: Engine = engine, demo_password: str | 
                 connection.execute(text("ALTER TABLE bookings ADD COLUMN patient_latitude FLOAT"))
             if "patient_longitude" not in columns:
                 connection.execute(text("ALTER TABLE bookings ADD COLUMN patient_longitude FLOAT"))
+            alert_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(alerts)"))}
+            if "language" not in alert_columns:
+                connection.execute(text("ALTER TABLE alerts ADD COLUMN language VARCHAR(16) DEFAULT 'English'"))
     password = get_settings().demo_password if demo_password is None else demo_password
     if not password:
         return 0

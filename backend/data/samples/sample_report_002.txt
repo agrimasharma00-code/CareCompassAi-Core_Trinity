@@ -1,0 +1,5 @@
+SYNTHETIC SAMPLE REPORT 002 — NOT A REAL PATIENT
+Collected for the CareCompass PathoVision parser demo.
+Platelets | 240 | 10^9/L | 150–400
+Creatinine | 0.9 | mg/dL | 0.6–1.2
+Vitamin D | 18 | ng/mL | 20–50

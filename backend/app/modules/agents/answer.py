@@ -1,11 +1,12 @@
 from pathlib import Path
+import re
 
 from app.integrations import sarvam_client
 from app.core import reasoning
 
 FAQ = Path(__file__).with_name("faq.txt").read_text(encoding="utf-8")
 
-SYSTEM_PROMPT = """You are Priya, a female CareCompass care-navigation assistant in India. Refer to yourself with feminine Hindi forms such as 'मैं मदद कर सकती हूँ' and feminine Hinglish forms such as 'madad kar sakti hoon' and 'dhoondh sakti hoon'. Keep replies short and conversational, usually 3–4 sentences. The target language and script will be specified in this prompt; follow it exactly: Hindi must use Devanagari, Hinglish must use Roman script, and English must use English. Give only general, widely accepted health information. Never diagnose, provide medicine names or doses, or say a condition is 'nothing to worry about'. For general-health answers, end with a brief safety line naming appropriate red flags and calling 112, followed by an offer to help find a doctor. For off_topic, politely say you help with health care and ask how you can help. For app_help, use only the supplied FAQ; do not invent features or promise booking. For smalltalk, greet naturally and invite a health-care request."""
+SYSTEM_PROMPT = """You are Priya, a female CareCompass care-navigation assistant in India. Refer to yourself with feminine Hindi forms such as 'मैं मदद कर सकती हूँ' and feminine Hinglish forms such as 'madad kar sakti hoon' and 'dhoondh sakti hoon'. Keep replies short and conversational, usually 2–4 sentences. The target language and script will be specified in this prompt; follow it exactly: Hindi must use Devanagari, Hinglish must use Roman script, and English must use English. Only answer within general health, wellbeing, and CareCompass navigation. If the message is outside that scope, politely redirect without answering its factual question. Use only cautious, widely accepted general information; if uncertain, say so and suggest a qualified clinician. Never diagnose, provide medicine names or doses, interpret an individual test result, or say a condition is 'nothing to worry about'. Do not claim facts that are not in the user message or fixed FAQ. For general-health answers, end with a brief safety line naming appropriate red flags and calling 112, followed by an offer to help find a doctor. For off_topic, return only a polite health-care redirect. For app_help, use only the supplied FAQ; do not invent features or promise booking. For smalltalk, greet naturally and invite a health-care request."""
 
 TEMPLATES = {
     "answer": {
@@ -29,6 +30,14 @@ TEMPLATES = {
         "Hinglish": "Main health care aur general health jaankari mein madad karti hoon. Aapko health se judi kya madad chahiye?",
     },
 }
+
+MEDICINE_REFUSALS = {
+    "English": "I can’t recommend a medicine or dose. A licensed clinician or pharmacist can advise based on your health history. If you have chest pain, difficulty breathing, fainting, or confusion, call 112.",
+    "Hindi": "मैं दवा या उसकी खुराक की सलाह नहीं दे सकती। आपकी स्वास्थ्य जानकारी देखकर डॉक्टर या फार्मासिस्ट सही सलाह दे सकते हैं। सीने में दर्द, सांस लेने में तकलीफ़, बेहोशी या भ्रम हो तो 112 पर कॉल करें।",
+    "Hinglish": "Main medicine ya dose recommend nahi kar sakti. Aapki health history dekhkar doctor ya pharmacist sahi salah de sakte hain. Seene mein dard, saans ki dikkat, behoshi ya confusion ho to 112 par call karein.",
+}
+
+UNSAFE_ANSWER = re.compile(r"\b(?:you have|you are suffering from|this is definitely|diagnos(?:e|ed|is)|take\s+\w+|start\s+\w+|stop\s+\w+|prescribe\w*|\d+(?:\.\d+)?\s*(?:mg|mcg|ml|tablets?|capsules?))\b", re.I)
 
 
 def care_tip(message: str, language: str) -> str:
@@ -98,6 +107,12 @@ def spoken_text(message: str, language: str, mode: str, context: dict | None = N
 
 
 def generate(intent: str, message: str, language: str, context: str = "") -> str:
+    if intent == "off_topic":
+        return TEMPLATES["off_topic"][language]
+    if intent == "smalltalk":
+        return TEMPLATES["smalltalk"][language]
+    if intent == "answer" and re.search(r"\b(?:which|what|recommend|suggest|should i|can i take|medicine|medication|tablet|dose|dosage|mg|paracetamol|antibiotic)\b.{0,45}\b(?:medicine|medication|tablet|dose|dosage|take|mg|paracetamol|antibiotic)\b|(?:कौन सी दवा|कौनसी दवा|कितनी दवा|दवा बताएं|दवा बताइए|कितनी खुराक)", message, re.I):
+        return MEDICINE_REFUSALS[language]
     faq = FAQ if intent == "app_help" else ""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT + f"\n\nMandatory target language: {language}. Use Devanagari for Hindi, Roman script for Hinglish, and English script for English." + ("\n\nFixed FAQ (use only these facts for app_help):\n" + faq if faq else "")},
@@ -106,7 +121,9 @@ def generate(intent: str, message: str, language: str, context: str = "") -> str
     try:
         response = sarvam_client.chat_text(messages)
         if response and response.strip():
-            return response.strip()
+            cleaned = response.strip()
+            if intent != "answer" or not UNSAFE_ANSWER.search(cleaned):
+                return cleaned
     except Exception:
         pass
     if intent == "answer" and context:

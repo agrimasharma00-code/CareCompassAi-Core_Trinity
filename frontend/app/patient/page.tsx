@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { API_BASE_URL } from "../../lib/api";
+import { alertSummary, composerBottomPadding, openAlert } from "../../lib/dispatch-state.mjs";
 import { persistConversation, restoreConversation } from "../../lib/conversation-state.mjs";
 
 type CareResult = {
@@ -23,14 +24,17 @@ type AssistantResult = {
   spoken_message?: string | null;
   safety_net?: string | null;
   why_not?: string | null;
+  intake_state?: IntakeState | null;
+  understood?: string | null;
 };
 type CareContext = { care_type: string; urgency: string; reasoning: string; symptoms: string[] };
+type IntakeState = { symptoms: string[]; symptom_text?: string; requested_service?: string | null; red_flag_answer?: string | null; who: string | null; age_group: "child" | "adult" | "elderly" | null; duration: string | null; preference: "home_visit" | "online_doctor" | null; red_flags_screened: boolean; question_count: number; pending_question: string | null };
 type VoiceLanguage = "hi-IN" | "en-IN";
 type AssistantLanguage = "Hindi" | "Hinglish" | "English";
 type AuthUser = { username: string; name: string; role: "patient" | "dispatch" | "provider"; caregiver_id: string | null };
 type Booking = { id: number; caregiver_id: string; slot: string; care_type: string; urgency: string; handoff_summary: string; state: string; proposed_slot: string | null };
 type CheckIn = { id: number; booking_id: number; state: string; answer: string | null };
-type Turn = { role: string; content: string; follow_up_question?: string; language?: VoiceLanguage; suggestions?: string[]; spoken_message?: string | null; care_context?: CareContext | null; display?: AssistantResult };
+type Turn = { role: string; content: string; follow_up_question?: string; language?: VoiceLanguage; suggestions?: string[]; spoken_message?: string | null; care_context?: CareContext | null; intake_state?: IntakeState | null; display?: AssistantResult };
 const CONVERSATION_KEY = "carecompass_conversation_v1";
 
 const names: Record<string, string> = {
@@ -160,6 +164,7 @@ export default function PatientPage() {
   const [lng, setLng] = useState("77.27");
   const [result, setResult] = useState<AssistantResult | null>(null);
   const [careContext, setCareContext] = useState<CareContext | null>(null);
+  const [intakeState, setIntakeState] = useState<IntakeState | null>(null);
   const [showCaregivers, setShowCaregivers] = useState(false);
   const conversationEndRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLElement | null>(null);
@@ -167,6 +172,7 @@ export default function PatientPage() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
+  const [failedMessage, setFailedMessage] = useState("");
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -181,6 +187,8 @@ export default function PatientPage() {
   const [dispatchAlertBusy, setDispatchAlertBusy] = useState(false);
   const [dispatchAlertMessage, setDispatchAlertMessage] = useState("");
   const [dispatchAlertStatus, setDispatchAlertStatus] = useState("");
+  const [activeDispatchAlert, setActiveDispatchAlert] = useState<{ id: number; status: string } | null>(null);
+  const [liveConnected, setLiveConnected] = useState(false);
   const [bookingCaregiver, setBookingCaregiver] = useState<string | null>(null);
   const [bookingSlot, setBookingSlot] = useState("");
   const [bookingBusy, setBookingBusy] = useState(false);
@@ -215,6 +223,7 @@ export default function PatientPage() {
     const latestAssistant = [...restored].reverse().find((turn) => turn.role === "assistant");
     if (latestAssistant?.display) setResult(latestAssistant.display);
     if (latestAssistant?.display?.care_context || latestAssistant?.care_context) setCareContext(latestAssistant.display?.care_context || latestAssistant.care_context || null);
+    if (latestAssistant?.display?.intake_state || latestAssistant?.intake_state) setIntakeState(latestAssistant.display?.intake_state || latestAssistant.intake_state || null);
     setConversationReady(true);
   }, []);
 
@@ -238,6 +247,7 @@ export default function PatientPage() {
         const latestAssistant = [...payload.messages].reverse().find((turn) => turn.role === "assistant");
         if (latestAssistant?.display) setResult(latestAssistant.display);
         setCareContext(latestAssistant?.display?.care_context || latestAssistant?.care_context || null);
+        setIntakeState(latestAssistant?.display?.intake_state || latestAssistant?.intake_state || null);
       })
       .catch(() => undefined)
       .finally(() => {
@@ -325,16 +335,18 @@ export default function PatientPage() {
     }
   }
 
-  async function submitText(message: string, detectedLanguage?: string | null) {
+  async function submitText(message: string, detectedLanguage?: string | null, retry = false) {
     const trimmed = message.trim();
     if (!trimmed) return;
     stopSpeech();
     setBusy(true);
     setError("");
+    setFailedMessage("");
     const responseLanguage = inferVoiceLanguage(trimmed, detectedLanguage);
-    const turns: Turn[] = [...history, { role: "user", content: trimmed, language: responseLanguage }];
+    const baseHistory = retry ? history.slice(0, -1) : history;
+    const turns: Turn[] = retry ? history : [...history, { role: "user", content: trimmed, language: responseLanguage }];
     setHistory(turns);
-    const lastDecision = careContext || [...history].reverse().find((turn) => turn.role === "assistant" && turn.care_context)?.care_context || null;
+    const lastDecision = careContext || [...baseHistory].reverse().find((turn) => turn.role === "assistant" && turn.care_context)?.care_context || null;
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/assistant/chat`, {
         method: "POST",
@@ -343,23 +355,26 @@ export default function PatientPage() {
           message: trimmed,
           language: detectedLanguage || "auto",
           location: { lat: Number(lat), lng: Number(lng) },
-          history,
+          history: baseHistory,
           care_context: lastDecision,
           booking_context: bookings[0] || null,
+          intake_state: intakeState || [...baseHistory].reverse().find((turn) => turn.role === "assistant" && turn.intake_state)?.intake_state || null,
         }),
       });
       if (!response.ok) throw new Error(`Assistant service returned ${response.status}`);
       const data: AssistantResult = await response.json();
-      const nextHistory = [...turns, { role: "assistant", content: data.message, follow_up_question: data.mode === "followup" ? data.message : undefined, language: responseLanguage, suggestions: data.suggestions, spoken_message: data.spoken_message, care_context: data.care_context, display: data }];
+      const nextHistory = [...turns, { role: "assistant", content: data.message, follow_up_question: data.mode === "followup" ? data.message : undefined, language: responseLanguage, suggestions: data.suggestions, spoken_message: data.spoken_message, care_context: data.care_context, intake_state: data.intake_state, display: data }];
       setHistory(nextHistory);
       setInput("");
       if (inputRef.current) inputRef.current.style.height = "44px";
       setResult(data);
       setCareContext(data.care_context);
+      setIntakeState(data.intake_state || null);
       setShowCaregivers(false);
       if (readAloudRef.current) void playSpeech(spokenSummary(data), responseLanguage);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not reach the assistant service.");
+      setFailedMessage(trimmed);
     } finally {
       setBusy(false);
     }
@@ -532,7 +547,7 @@ export default function PatientPage() {
       .then((items: Booking[]) => setBookings(items))
       .catch(() => setBookingError("Could not load your booking status. Refresh to try again."));
     fetch(`${API_BASE_URL}/api/v1/checkins/mine`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.ok ? r.json() : []).then(setCheckins).catch(() => setCheckins([]));
-    fetch(`${API_BASE_URL}/api/v1/alerts/mine`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.ok ? r.json() : []).then((items: { status: string }[]) => { if (items[0]) setDispatchAlertStatus(items[0].status); }).catch(() => undefined);
+    fetch(`${API_BASE_URL}/api/v1/alerts/mine`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.ok ? r.json() : []).then((items: { id: number; status: string }[]) => { const active = openAlert(items); if (active) { setActiveDispatchAlert(active); setDispatchAlertStatus(active.status); } }).catch(() => undefined);
   }, [authUser]);
 
   useEffect(() => {
@@ -546,7 +561,7 @@ export default function PatientPage() {
       const token = localStorage.getItem("carecompass_token");
       if (!token) return;
       socket = new WebSocket(`${API_BASE_URL.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(token)}`);
-      socket.onopen = () => { retry = 0; };
+      socket.onopen = () => { retry = 0; setLiveConnected(true); const latestToken = localStorage.getItem("carecompass_token"); if (latestToken) fetch(`${API_BASE_URL}/api/v1/alerts/mine`, { headers: { Authorization: `Bearer ${latestToken}` } }).then((r) => r.ok ? r.json() : []).then((items: { id: number; status: string }[]) => { const active = openAlert(items); if (active) { setActiveDispatchAlert(active); setDispatchAlertStatus(active.status); } }).catch(() => undefined); };
       socket.onmessage = (event) => {
         try {
           const update = JSON.parse(event.data);
@@ -554,11 +569,12 @@ export default function PatientPage() {
             const booking = update.booking as Booking;
             setBookings((current) => [booking, ...current.filter((item) => item.id !== booking.id)]);
           }
-          if (update.alert && authUser.role === "patient") setDispatchAlertStatus(update.alert.status);
+          if (update.alert && authUser.role === "patient") { setDispatchAlertStatus(update.alert.status); setActiveDispatchAlert(update.alert.status === "closed" ? null : update.alert); }
           if (update.checkin?.emergency && authUser.role === "patient") setDispatchAlertMessage("Please call 112 now. You can also alert the demo dispatch desk.");
         } catch { /* Ignore malformed updates and keep the live connection. */ }
       };
       socket.onclose = () => {
+        setLiveConnected(false);
         if (stopped) return;
         const delay = Math.min(30_000, 500 * (2 ** Math.min(retry, 6)));
         retry += 1;
@@ -585,6 +601,7 @@ export default function PatientPage() {
     setHistory([]);
     setResult(null);
     setCareContext(null);
+    setIntakeState(null);
     setShowCaregivers(false);
     setError("");
   }
@@ -625,12 +642,30 @@ export default function PatientPage() {
   }
 
   async function alertDispatch() {
-    const token = localStorage.getItem("carecompass_token");
-    if (!token) { setDispatchAlertMessage("Sign in as a patient to alert the demo dispatch desk."); return; }
+    let token = localStorage.getItem("carecompass_token");
     setDispatchAlertBusy(true); setDispatchAlertMessage("");
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/alerts`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ latitude: Number(lat), longitude: Number(lng), red_flags: result?.care?.red_flags || [], summary: history.filter((turn) => turn.role === "user").slice(-3).map((turn) => turn.content).join("; ").slice(0, 490) || result?.message || "Emergency concern" }) });
+      if (activeDispatchAlert && ["new", "accepted", "en_route"].includes(activeDispatchAlert.status)) {
+        setDispatchAlertStatus(activeDispatchAlert.status);
+        setDispatchAlertMessage(`An alert is already open · status: ${activeDispatchAlert.status}.`);
+        return;
+      }
+      if (!token) {
+        const login = await fetch(`${API_BASE_URL}/api/v1/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: "patient1", password: process.env.NEXT_PUBLIC_DEMO_PASSWORD || "CareCompass-Demo-2026" }) });
+        const credentials = await login.json();
+        if (!login.ok) throw new Error(credentials.detail || "Could not open the demo patient account.");
+        const acquiredToken = String(credentials.access_token || "");
+        if (!acquiredToken) throw new Error("The demo patient sign-in did not return a session.");
+        token = acquiredToken;
+        localStorage.setItem("carecompass_token", acquiredToken);
+        localStorage.setItem("carecompass_user", JSON.stringify(credentials.user));
+        setAuthUser(credentials.user);
+      }
+      if (!token) throw new Error("Could not open the demo patient account.");
+      const flags = result?.care?.red_flags?.length ? result.care.red_flags : ["emergency_suspected"];
+      const response = await fetch(`${API_BASE_URL}/api/v1/alerts`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ latitude: Number(lat), longitude: Number(lng), red_flags: flags, summary: alertSummary(intakeState || {}, flags), language: result?.language || "English" }) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || "Could not alert demo dispatch.");
+      setActiveDispatchAlert(payload.status === "closed" ? null : payload);
       setDispatchAlertMessage(result?.language === "Hindi" ? `डेमो डिस्पैच डेस्क को सूचना मिली · स्थिति: ${payload.status}। यह एम्बुलेंस सेवा नहीं है; आपात स्थिति में 112 पर कॉल करें।` : result?.language === "Hinglish" ? `Demo dispatch desk ko alert mila · status ${payload.status}. Yeh ambulance nahi hai; emergency mein 112 par call karein.` : `Demo dispatch desk alerted · status ${payload.status}. This is not an ambulance service; keep 112 as your emergency contact.`);
       setDispatchAlertStatus(payload.status);
     } catch (error) { setDispatchAlertMessage(error instanceof Error ? error.message : "Could not alert demo dispatch."); }
@@ -666,7 +701,7 @@ export default function PatientPage() {
   const latestAssistantIndex = history.reduce((latest, turn, index) => turn.role === "assistant" ? index : latest, -1);
 
   return (
-    <main className="container patient-layout" style={{ maxWidth: 850, "--composer-height": `${composerHeight}px` } as CSSProperties}>
+    <main className="container patient-layout" style={{ maxWidth: 850, "--composer-height": composerBottomPadding(composerHeight) } as CSSProperties}>
       <Link href="/" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 700 }}>← CareCompass</Link>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: -26, flexWrap: "wrap" }}>
         <button type="button" className="pill" onClick={newConversation}>{result?.language === "Hindi" ? "नई बातचीत" : result?.language === "Hinglish" ? "Nayi conversation" : "New conversation"}</button>
@@ -674,6 +709,7 @@ export default function PatientPage() {
       </div>
       <span className="eyebrow" style={{ display: "block", marginTop: 42 }}>Care intake</span>
       <h1 style={{ fontSize: "clamp(36px, 6vw, 56px)", margin: "10px 0" }}>Let’s find the right care.</h1>
+      {authUser && <p role="status" className="pill">Live {liveConnected ? "● connected" : "○ reconnecting"}</p>}
       <p className="muted" style={{ fontSize: 17 }}>Share what support you need. This service routes care and does not diagnose or prescribe.</p>
 
       <section ref={composerRef} className="card patient-composer">
@@ -729,24 +765,28 @@ export default function PatientPage() {
             return <div key={index} style={{ textAlign: turn.role === "user" ? "right" : "left", margin: "10px 0" }}>
               {turn.role === "assistant" && display?.mode === "care" && display.care ? <article className="card" style={{ display: "inline-block", textAlign: "left", width: "min(100%, 720px)", padding: 18 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><strong>{plainCareValue(display.care.care_type, display.language)}</strong><span className="pill">{plainUrgency(display.care.urgency, display.language)}</span><button type="button" className="speaker-button" aria-label="Read this care reply aloud" onClick={() => void playSpeech(turn.spoken_message || turn.content, turn.language || "en-IN", true)}>🔊</button></div>
+                {display.understood && <p><strong>{display.language === "Hindi" ? "मैंने यह समझा" : display.language === "Hinglish" ? "Maine yeh samjha" : "What I understood"}:</strong> {display.understood}</p>}
                 <p className="muted" style={{ whiteSpace: "pre-line" }}>{plainReasoning(display.care.reasoning, display.language, display.care.care_type, display.care.urgency)}</p>
-                {display.why_not && <p style={{ whiteSpace: "pre-line" }}>{display.why_not}</p>}{display.safety_net && <p className="pill" style={{ display: "block", whiteSpace: "normal" }}>{display.safety_net}</p>}
+                {display.why_not && <details><summary>{display.language === "Hindi" ? "यह विकल्प क्यों?" : display.language === "Hinglish" ? "Yeh option kyun?" : "Why this option?"}</summary><p style={{ whiteSpace: "pre-line" }}>{display.why_not}</p></details>}{display.safety_net && <p className="pill" style={{ display: "block", whiteSpace: "normal" }}>{display.safety_net}</p>}
               </article> : turn.role === "assistant" && display?.mode === "emergency" ? <div className="danger" style={{ display: "inline-block", maxWidth: "90%" }}><a href="tel:112" className="button" style={{ background: "white", color: "#a91e2a", textDecoration: "none", display: "inline-block", marginRight: 8 }}>Call 112</a>{turn.content}<button type="button" className="speaker-button speaker-button-light" aria-label="Read this emergency reply aloud" onClick={() => void playSpeech(turn.spoken_message || turn.content, turn.language || "hi-IN", true)}>🔊</button></div> : <span className="card conversation-bubble" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 16px", maxWidth: "85%" }}>{turn.content}{turn.role === "assistant" && <button type="button" className="speaker-button" aria-label="Read this message aloud" title="Read this message aloud" onClick={() => void playSpeech(turn.spoken_message || turn.content, turn.language || "en-IN", true)}>🔊</button>}</span>}
               {turn.role === "assistant" && !!turn.suggestions?.length && <div style={{ display: "flex", justifyContent: "flex-start", flexWrap: "wrap", gap: 8, marginTop: 8 }}>{turn.suggestions.map((suggestion) => <button key={suggestion} type="button" className="pill" disabled={busy || transcribing} onClick={() => void submitText(suggestion)} style={{ border: "1px solid #cfe2dd", cursor: "pointer", background: "white" }}>{suggestion}</button>)}</div>}
             </div>;
           })}
         </section>
       )}
+      {busy && <p className="pill" role="status" aria-live="polite">{voiceInputLanguage === "hi-IN" ? "सोच रही हूँ…" : "Thinking…"}</p>}
+      {error && failedMessage && <button className="pill" type="button" disabled={busy} onClick={() => void submitText(failedMessage, null, true)}>Retry</button>}
 
       {result && (
         <section className="patient-result" style={{ marginTop: 24 }}>
           {emergency ? (
             <div className="danger">
               <a href="tel:112" className="button" style={{ background: "white", color: "#a91e2a", fontSize: 22, textDecoration: "none", display: "inline-block", marginBottom: 20 }}>{result.language === "Hindi" ? "112 पर कॉल करें" : result.language === "Hinglish" ? "112 par call karein" : "Call 112"}</a>
-              <button type="button" className="button" disabled={dispatchAlertBusy} onClick={() => void alertDispatch()} style={{ display: "block", background: "#741722", marginBottom: 16 }}>{result.language === "Hindi" ? "डेमो डिस्पैच डेस्क को अलर्ट करें (112 के अलावा)" : result.language === "Hinglish" ? "Demo dispatch desk ko alert karein (112 ke alawa)" : "Alert demo dispatch desk (in addition to 112)"}</button>
+              <button type="button" className="button" disabled={dispatchAlertBusy || Boolean(activeDispatchAlert && ["new", "accepted", "en_route"].includes(activeDispatchAlert.status))} onClick={() => void alertDispatch()} style={{ display: "block", background: "#741722", marginBottom: 16 }}>{activeDispatchAlert && ["new", "accepted", "en_route"].includes(activeDispatchAlert.status) ? `${result.language === "Hindi" ? "डिस्पैच स्थिति" : result.language === "Hinglish" ? "Dispatch status" : "Dispatch status"}: ${activeDispatchAlert.status.replaceAll("_", " ")}` : result.language === "Hindi" ? "डेमो डिस्पैच डेस्क को अलर्ट करें (112 के अलावा)" : result.language === "Hinglish" ? "Demo dispatch desk ko alert karein (112 ke alawa)" : "Alert demo dispatch desk (in addition to 112)"}</button>
               <small style={{ display: "block", marginBottom: 12 }}>{result.language === "Hindi" ? "यह केवल डेमो डिस्पैच है, एम्बुलेंस नहीं; 112 का विकल्प नहीं है।" : result.language === "Hinglish" ? "Yeh sirf demo dispatch hai, ambulance nahi; 112 ka replacement nahi." : "Demo dispatch only; this is not an ambulance and does not replace 112."}</small>
               {dispatchAlertMessage && <p role="status">{dispatchAlertMessage}</p>}
               {dispatchAlertStatus && <p role="status">{result.language === "Hindi" ? `डेमो डिस्पैच स्थिति: ${dispatchAlertStatus}` : result.language === "Hinglish" ? `Demo dispatch status: ${dispatchAlertStatus}` : `Demo dispatch status: ${dispatchAlertStatus}`}</p>}
+              {dispatchAlertStatus && <ol aria-label="Demo dispatch status timeline" style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingLeft: 20 }}>{["new", "accepted", "en_route", "arrived", "closed"].map((step) => <li key={step} aria-current={dispatchAlertStatus === step ? "step" : undefined} style={{ fontWeight: dispatchAlertStatus === step ? 800 : 400, opacity: ["new", "accepted", "en_route", "arrived", "closed"].indexOf(step) <= ["new", "accepted", "en_route", "arrived", "closed"].indexOf(dispatchAlertStatus) ? 1 : 0.45 }}>{step.replaceAll("_", " ")}</li>)}</ol>}
               <h2 style={{ fontSize: 30, margin: "0 0 8px" }}>{result.message}</h2>
               <p style={{ margin: 0 }}>{result.language === "Hindi" ? "यह ऐप आपकी ओर से आपातकालीन सेवाओं को कॉल नहीं कर सकती।" : result.language === "Hinglish" ? "Yeh app aapki taraf se emergency services ko call nahi kar sakti." : "CareCompass cannot call emergency services for you."}</p>
               {(result.care?.red_flags || []).length > 0 && <p>{result.language === "Hindi" ? "खतरे के संकेत:" : result.language === "Hinglish" ? "Khatre ke signs:" : "Red flags:"} {result.care?.red_flags.map((flag) => (result.language === "Hindi" ? hindiRedFlagLabels[flag] : result.language === "Hinglish" ? hinglishRedFlagLabels[flag] : redFlagLabels[flag]) || flag).join(", ")}</p>}
@@ -759,7 +799,8 @@ export default function PatientPage() {
                 <button type="button" className="speaker-button" aria-label="Read care summary aloud" title="Read care summary aloud" onClick={() => void playSpeech(spokenSummary(result), responseLanguage, true)}>🔊</button>
               </div>
               <p className="muted" style={{ lineHeight: 1.6 }}>{plainReasoning(result.care.reasoning, result.language, result.care.care_type, result.care.urgency)}</p>
-              {result.why_not && <p style={{ whiteSpace: "pre-line", lineHeight: 1.55 }}><strong>{result.language === "Hindi" ? "अन्य विकल्प" : result.language === "Hinglish" ? "Dusre options" : "Why other options were not selected"}:</strong> {result.why_not}</p>}
+              {result.understood && <p><strong>{result.language === "Hindi" ? "मैंने यह समझा" : result.language === "Hinglish" ? "Maine yeh samjha" : "What I understood"}:</strong> {result.understood}</p>}
+              {result.why_not && <details><summary>{result.language === "Hindi" ? "यह विकल्प क्यों?" : result.language === "Hinglish" ? "Yeh option kyun?" : "Why this option?"}</summary><p style={{ whiteSpace: "pre-line", lineHeight: 1.55 }}>{result.why_not}</p></details>}
               {result.safety_net && <p className="pill" style={{ display: "block", whiteSpace: "normal", lineHeight: 1.5, padding: 12 }}>{result.safety_net}</p>}
               {result.care.red_flags.length > 0 && <p style={{ color: "#a91e2a", fontWeight: 700 }}>{result.language === "Hindi" ? "खतरे के संकेत:" : result.language === "Hinglish" ? "Khatre ke signs:" : "Red flags:"} {result.care.red_flags.map((flag) => (result.language === "Hindi" ? hindiRedFlagLabels[flag] : result.language === "Hinglish" ? hinglishRedFlagLabels[flag] : redFlagLabels[flag]) || flag).join(", ")}</p>}
               {result.care.matched_caregivers.length > 0 && <>
@@ -792,7 +833,7 @@ export default function PatientPage() {
           {!emergency && result.mode === "care" && !!result.suggestions.length && <div className="care-suggestions" aria-label="Care options">{result.suggestions.map((suggestion) => <button key={suggestion} type="button" className="pill" disabled={busy || transcribing} onClick={() => void submitText(suggestion)}>{suggestion}</button>)}</div>}
         </section>
       )}
-      {bookings.length > 0 && <section aria-label="My bookings" className="card" style={{ marginTop: 20, padding: 18 }}><h3>My booking requests</h3>{bookings.map((booking) => <div key={booking.id} className="pill" style={{ display: "block", marginTop: 8, padding: 12 }}><strong>{booking.caregiver_id}</strong> · {new Date(booking.slot).toLocaleString()} · <span>{booking.state === "requested" ? "Waiting for provider confirmation" : booking.state}</span><small style={{ display: "block", marginTop: 6 }}>Demo: log in as {booking.caregiver_id} to see this on the provider dashboard. <Link href="/login">Open demo login</Link></small></div>)}</section>}
+      {bookings.length > 0 && <section aria-label="My bookings" className="card" style={{ marginTop: 20, padding: 18 }}><h3>My booking requests</h3>{bookings.map((booking) => <div key={booking.id} className="pill" style={{ display: "block", marginTop: 8, padding: 12 }}><strong>{booking.caregiver_id}</strong> · {new Date(booking.slot).toLocaleString()} · <span>{booking.state === "requested" ? "Waiting for provider confirmation" : booking.state}</span><small style={{ display: "block", marginTop: 6 }}>Demo: log in as {booking.caregiver_id} to see this on the provider dashboard. <Link href="/login">Open demo login</Link></small>{booking.state === "confirmed" && booking.care_type === "teleconsultation" && <a className="button" href={`https://meet.jit.si/CareCompass-demo-${booking.id}`} target="_blank" rel="noreferrer" style={{ display:"inline-block", marginTop:8, textDecoration:"none" }}>Join test consultation — demo</a>}</div>)}</section>}
       <div ref={conversationEndRef} aria-hidden="true" style={{ order: 2, height: 1 }} />
       {toast && <div role="status" className="pill" style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", padding: 14 }}>{toast}</div>}
     </main>

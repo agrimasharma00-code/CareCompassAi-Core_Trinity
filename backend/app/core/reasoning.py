@@ -16,23 +16,16 @@ URGENCY_NAMES = {
 
 
 def why_not(care_type, language="English", facts=None):
-    alternatives = [(key, name[language]) for key, name in CARE_NAMES.items() if key not in (care_type, "emergency_112")]
-    chosen = CARE_NAMES.get(care_type, CARE_NAMES["teleconsultation"])[language]
-    symptom_names = {
-        "English": {"headache": "headache", "fever": "fever", "cough": "cough", "cold": "cold", "stomach pain": "stomach pain", "body ache": "body ache", "acidity": "acidity", "weakness": "weakness", "nausea": "nausea", "vomiting": "vomiting", "diarrhea": "diarrhea"},
-        "Hindi": {"headache": "सिरदर्द", "fever": "बुखार", "cough": "खांसी", "cold": "सर्दी", "stomach pain": "पेट दर्द", "body ache": "बदन दर्द", "acidity": "एसिडिटी", "weakness": "कमज़ोरी", "nausea": "मतली", "vomiting": "उल्टी", "diarrhea": "दस्त"},
-        "Hinglish": {"headache": "sir dard", "fever": "bukhar", "cough": "khansi", "cold": "sardi", "stomach pain": "pet dard", "body ache": "badan dard", "acidity": "acidity", "weakness": "kamzori", "nausea": "matli", "vomiting": "ulti", "diarrhea": "dast"},
-    }
-    known = [symptom_names[language].get(str(item), str(item)) for item in (facts or []) if str(item) in symptom_names[language]]
-    observed = ", ".join(known) if known else None
-    lines = [f"{name} was not selected because the reported {observed or 'care need'} is better matched by {chosen}." for _key, name in alternatives]
     if language == "Hindi":
-        return "\n".join(f"{name} नहीं चुना गया क्योंकि बताई गई {observed or 'देखभाल की ज़रूरत'} के लिए {chosen} बेहतर मेल खाता है।" for _key, name in alternatives)
-    if language == "Hinglish":
-        return "\n".join(f"{name} nahi chuna, kyunki bataye gaye {observed or 'care need'} ke liye {chosen} zyada sahi hai." for _key, name in alternatives)
-    if lines:
-        lines[0] = "Other options: " + lines[0]
-    return "\n".join(lines)
+        first = "आपकी जाँच में कोई खतरे का संकेत नहीं बताया गया।"
+        second = "नर्सिंग विकल्प नहीं चुना: इंजेक्शन या ड्रेसिंग जैसी प्रक्रिया नहीं बताई गई।" if care_type != "home_nursing" else "लैब टेस्ट नहीं चुना: सैंपल जाँच का अनुरोध नहीं था।"
+    elif language == "Hinglish":
+        first = "Screening mein koi red-flag sign report nahi hua."
+        second = "Home nursing nahi chuni: injection ya dressing jaisi procedure nahi maangi gayi." if care_type != "home_nursing" else "Lab test nahi chuna: sample test ki request nahi thi."
+    else:
+        first = "Not emergency: no red-flag symptom was reported in screening."
+        second = "Not home nursing: no injection or dressing procedure was requested." if care_type != "home_nursing" else "Not a lab test: no sample collection was requested."
+    return f"{first}\n{second}"
 
 
 def safety_net(language="English", care_type=None):

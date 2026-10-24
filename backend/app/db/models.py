@@ -66,6 +66,7 @@ class Alert(Base):
     longitude: Mapped[float] = mapped_column(Float)
     red_flags: Mapped[list[str]] = mapped_column(JSON, default=list)
     summary: Mapped[str] = mapped_column(String(500))
+    language: Mapped[str] = mapped_column(String(16), default="English")
     status: Mapped[str] = mapped_column(String(24), default="new", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
