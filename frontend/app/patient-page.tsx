@@ -85,7 +85,7 @@ export default function PatientPage() {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Microphone access is required for voice guidance.";
-      setState(`${message} Start the backend with: cd backend; uvicorn app.main:app --reload --port 8000`);
+      setState(message === "Failed to fetch" ? "The browser could not reach CareCompass. Open http://localhost:3000 (not 127.0.0.1), then try again." : message);
     }
   }
   const emergency = result?.care_type === "emergency_referral";
