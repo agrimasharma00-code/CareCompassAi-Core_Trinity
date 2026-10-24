@@ -32,23 +32,29 @@ export default function PatientPage() {
     } catch (error) { setState(error instanceof Error ? error.message : "Please try again."); } finally { setBusy(false); }
   }
   async function sendText(event: FormEvent) { event.preventDefault(); if (input.trim() && !busy) await requestCare(input); }
-  function stopVoice() {
+  function stopVoice(message = "Voice session ended.") {
     processorRef.current?.disconnect(); contextRef.current?.close(); streamRef.current?.getTracks().forEach((track) => track.stop());
-    socketRef.current?.send("end"); socketRef.current?.close(); setListening(false); setState("Voice session ended.");
+    if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send("end");
+    socketRef.current?.close(); socketRef.current = null; streamRef.current = null; contextRef.current = null; processorRef.current = null;
+    setListening(false); setState(message);
   }
   async function voice() {
     if (listening) { stopVoice(); return; }
     try {
+      const health = await fetch(`${API}/health`);
+      if (!health.ok) throw new Error("The CareCompass backend is unavailable.");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
       const socket = new WebSocket(`${API.replace(/^http/, "ws")}/api/v1/voice/realtime`);
       socket.binaryType = "arraybuffer";
+      socketRef.current = socket;
+      streamRef.current = stream;
       socket.onmessage = (event) => {
         const message = JSON.parse(event.data) as { type: string; text?: string; transcript?: string; response?: CareResult; audio_base64?: string; audio_mime_type?: string; message?: string };
         if (message.type === "partial") { setInput(message.text ?? ""); setState("Listening…"); }
         if (message.type === "final" && message.response) { setInput(message.transcript ?? ""); setResult(message.response); setState("Care guidance is ready."); if (message.audio_base64 && message.audio_mime_type) new Audio(`data:${message.audio_mime_type};base64,${message.audio_base64}`).play(); }
-        if (message.type === "error") { setState(message.message ?? "Voice connection failed."); stopVoice(); }
+        if (message.type === "error") stopVoice(message.message ?? "Voice connection failed.");
       };
-      socket.onerror = () => setState("Could not connect to the Sarvam voice service.");
+      socket.onerror = () => stopVoice("Could not connect to the Sarvam voice service. Check that the backend is running and your Sarvam key is in .env.");
       socket.onopen = async () => {
         const context = new AudioContext(); const source = context.createMediaStreamSource(stream); const processor = context.createScriptProcessor(2048, 1, 1);
         processor.onaudioprocess = (event) => {
@@ -57,9 +63,12 @@ export default function PatientPage() {
           for (let index = 0; index < pcm.length; index++) pcm[index] = Math.max(-1, Math.min(1, input[Math.floor(index * ratio)])) * 0x7fff;
           socket.send(pcm.buffer);
         };
-        source.connect(processor); processor.connect(context.destination); socketRef.current = socket; streamRef.current = stream; contextRef.current = context; processorRef.current = processor; setListening(true); setState("Listening with Sarvam… tap again to stop.");
+        source.connect(processor); processor.connect(context.destination); contextRef.current = context; processorRef.current = processor; setListening(true); setState("Listening with Sarvam… tap again to stop.");
       };
-    } catch { setState("Microphone access is required for voice guidance."); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Microphone access is required for voice guidance.";
+      setState(`${message} Start the backend with: cd backend; uvicorn app.main:app --reload --port 8000`);
+    }
   }
   const emergency = result?.care_type === "emergency_referral";
   return <main className="min-h-screen bg-[#f5f8f7] text-slate-900"><nav className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5"><div className="flex items-center gap-2 text-xl font-black"><span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-600 text-white">+</span>CareCompass</div><div className="hidden gap-6 text-sm font-bold text-slate-600 sm:flex"><button onClick={() => setState("Hospital login is the next screen.")}>Hospital login</button><button onClick={() => setState("Ambulance partner login is the next screen.")}>Ambulance partners</button></div></nav>
