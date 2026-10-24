@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", extra="ignore")
 
     sarvam_api_key: str | None = None
+    sarvam_chat_model: str = "sarvam-105b-conversations"
+    sarvam_stt_model: str = "saaras:v4"
+    sarvam_tts_model: str = "bulbul:v4-flash"
+    sarvam_tts_speaker: str | None = None
+    sarvam_timeout_s: float = 25.0
+    database_url: str = f"sqlite:///{PROJECT_ROOT / 'niramaya.db'}"
+    demo_password: str | None = None
     use_llm: bool = False
     immediate_threshold: float = 0.25
     max_distance_km: float = 15.0
@@ -24,3 +31,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_settings() -> Settings:
+    """Compatibility accessor for optional persistence and assistant modules."""
+    return settings
