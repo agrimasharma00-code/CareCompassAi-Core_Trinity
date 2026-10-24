@@ -1,0 +1,7 @@
+[
+  {"id":"cg-asha-01","name":"Asha Verma","role":"nurse","skills":["fever","cough","wound_care"],"languages":["en","hi","hinglish"],"lat":28.545,"lng":77.192,"rating":4.8,"available_slots":["today 4 pm","today 7 pm"]},
+  {"id":"cg-ravi-02","name":"Ravi Kumar","role":"paramedic_home_visit","skills":["fever","injury","vitals"],"languages":["en","hi","hinglish"],"lat":28.535,"lng":77.205,"rating":4.6,"available_slots":["today 3 pm"]},
+  {"id":"cg-meera-03","name":"Dr Meera Shah","role":"gp_teleconsult","skills":["fever","cough","stomach_pain"],"languages":["en","hi"],"lat":28.550,"lng":77.210,"rating":4.9,"available_slots":["today 2 pm","tomorrow 10 am"]},
+  {"id":"cg-arjun-04","name":"Dr Arjun Singh","role":"specialist","skills":["skin","diabetes","joint_pain"],"languages":["en","hinglish"],"lat":28.570,"lng":77.180,"rating":4.7,"available_slots":["tomorrow 11 am"]},
+  {"id":"cg-far-05","name":"Farah Khan","role":"nurse","skills":["elderly_care","wound_care"],"languages":["hi"],"lat":28.720,"lng":77.100,"rating":4.5,"available_slots":[]}
+]

@@ -1,0 +1,9 @@
+{
+  "care_types": {
+    "paramedic_home_visit": {"roles":["paramedic_home_visit"],"description":"In-person home support"},
+    "nurse": {"roles":["nurse"],"description":"Nursing support"},
+    "gp_teleconsult": {"roles":["gp_teleconsult"],"description":"General clinician consultation"},
+    "specialist": {"roles":["specialist"],"description":"Specialist consultation"}
+  },
+  "example_red_flags": ["breathing difficulty", "chest pain", "unconsciousness"]
+}

@@ -1,0 +1,12 @@
+[
+  {"text":"I have had a mild fever and cough for two days", "care_type":"gp_teleconsult", "urgency":"same_day"},
+  {"text":"papa ko do din se bukhar aur khansi hai", "care_type":"nurse", "urgency":"same_day"},
+  {"text":"Need a nurse for dressing a small wound at home", "care_type":"nurse", "urgency":"routine"},
+  {"text":"Can someone collect my blood sample at home", "care_type":"paramedic_home_visit", "urgency":"routine"},
+  {"text":"my chest hurts and I am short of breath", "care_type":"emergency_referral", "urgency":"immediate"},
+  {"text":"bacche ko saans lene mein bahut dikkat ho rahi hai", "care_type":"emergency_referral", "urgency":"immediate"},
+  {"text":"I need to discuss a recurring skin rash", "care_type":"specialist", "urgency":"routine"},
+  {"text":"kal se pet dard hai but I can eat", "care_type":"gp_teleconsult", "urgency":"same_day"},
+  {"text":"elderly mother needs help checking vitals at home", "care_type":"paramedic_home_visit", "urgency":"same_day"},
+  {"text":"mujhe diabetes specialist se baat karni hai", "care_type":"specialist", "urgency":"routine"}
+]
