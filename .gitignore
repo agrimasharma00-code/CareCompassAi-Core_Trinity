@@ -12,3 +12,4 @@ venv/
 models/*.joblib
 backend/models/*.joblib
 *.tsbuildinfo
+frontend/next-dev*.log
