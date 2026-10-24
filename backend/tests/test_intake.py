@@ -13,4 +13,4 @@ def test_follow_up_is_not_repeated() -> None:
     facts = extract_facts("papa ko bukhar hai", Language.AUTO)
     history = [ConversationTurn(role="assistant", content="Kya saans ki dikkat, seene mein dard, behoshi, zyada khoon ya daura hai?")]
     question = next_follow_up(facts, "papa ko bukhar hai", history, confidence=0.4)
-    assert question == "Patient ki umar kya hai?"
+    assert question == "Yeh kab shuru hua? Achanak hua ya dheere-dheere?"
