@@ -21,7 +21,7 @@ export default function PatientPage() {
   const socketRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const processorRef = useRef<AudioNode | null>(null);
   const speakingRef = useRef(false);
   const agentAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -86,15 +86,42 @@ export default function PatientPage() {
       };
       socket.onerror = () => stopVoice("Could not connect to the Sarvam voice service. Check that the backend is running and your Sarvam key is in .env.");
       socket.onclose = () => { if (socketRef.current === socket) stopVoice("Voice connection closed. Tap Start voice conversation to reconnect."); };
-      socket.onopen = () => {
-        const source = context.createMediaStreamSource(stream); const processor = context.createScriptProcessor(2048, 1, 1); const silence = context.createGain(); silence.gain.value = 0;
-        processor.onaudioprocess = (event) => {
+      socket.onopen = async () => {
+        const source = context.createMediaStreamSource(stream); const silence = context.createGain(); silence.gain.value = 0;
+        const sendPcm = (input: Float32Array) => {
           if (socket.readyState !== WebSocket.OPEN || speakingRef.current) return;
-          const input = event.inputBuffer.getChannelData(0), ratio = context.sampleRate / 16000, pcm = new Int16Array(Math.floor(input.length / ratio));
+          const ratio = context.sampleRate / 16000, pcm = new Int16Array(Math.floor(input.length / ratio));
           for (let index = 0; index < pcm.length; index++) pcm[index] = Math.max(-1, Math.min(1, input[Math.floor(index * ratio)])) * 0x7fff;
           socket.send(pcm.buffer); setState((current) => current.startsWith("Listening") ? "Hearing you…" : current);
         };
-        source.connect(processor); processor.connect(silence); silence.connect(context.destination); contextRef.current = context; processorRef.current = processor; setListening(true); setState("Listening with Sarvam… start speaking after the greeting.");
+        const connectLegacyProcessor = () => {
+          const processor = context.createScriptProcessor(2048, 1, 1);
+          processor.onaudioprocess = (event) => sendPcm(event.inputBuffer.getChannelData(0));
+          source.connect(processor); processor.connect(silence); processorRef.current = processor;
+        };
+        try {
+          if (!context.audioWorklet || typeof AudioWorkletNode === "undefined") throw new Error("AudioWorklet is unavailable");
+          const workletCode = `class CareCompassPcmProcessor extends AudioWorkletProcessor {
+            constructor() { super(); this.buffer = new Float32Array(1600); this.offset = 0; }
+            process(inputs) {
+              const channel = inputs[0] && inputs[0][0]; if (!channel) return true;
+              for (let index = 0; index < channel.length; index += 1) {
+                this.buffer[this.offset++] = channel[index];
+                if (this.offset === this.buffer.length) { this.port.postMessage(this.buffer.slice(0)); this.offset = 0; }
+              }
+              return true;
+            }
+          }
+          registerProcessor("carecompass-pcm", CareCompassPcmProcessor);`;
+          const moduleUrl = URL.createObjectURL(new Blob([workletCode], { type: "application/javascript" }));
+          await context.audioWorklet.addModule(moduleUrl); URL.revokeObjectURL(moduleUrl);
+          const processor = new AudioWorkletNode(context, "carecompass-pcm");
+          processor.port.onmessage = (event: MessageEvent<Float32Array>) => sendPcm(event.data);
+          source.connect(processor); processor.connect(silence); processorRef.current = processor;
+        } catch {
+          connectLegacyProcessor();
+        }
+        silence.connect(context.destination); contextRef.current = context; setListening(true); setState("Listening with Sarvam… start speaking after the greeting.");
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Microphone access is required for voice guidance.";
