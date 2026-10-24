@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CareCompass Call Demo</title>
+  <style>
+    :root { font-family: Inter, system-ui, sans-serif; color: #11263d; background: #f5f8f7; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 20px; box-sizing: border-box; }
+    main { width: min(100%, 440px); background: #fff; border: 1px solid #dfe9e5; border-radius: 24px; padding: 28px; box-shadow: 0 16px 50px #13382a18; }
+    h1 { margin: 6px 0 8px; font-size: clamp(28px, 7vw, 38px); } p { color: #526b7f; line-height: 1.55; }
+    label { display: grid; gap: 7px; margin-top: 20px; font-weight: 700; } input { padding: 14px; border: 1px solid #cddbd6; border-radius: 12px; font: inherit; }
+    button { width: 100%; border: 0; padding: 14px; border-radius: 12px; font: inherit; font-weight: 800; cursor: pointer; margin-top: 12px; background: #078a7d; color: #fff; }
+    button.secondary { background: #e6f5f1; color: #07665d; } button:disabled { opacity: .55; cursor: wait; }
+    .check { display: flex; align-items: center; gap: 9px; color: #263b4e; font-weight: 600; margin-top: 18px; } .check input { accent-color: #078a7d; }
+    #status { margin: 18px 0 0; padding: 12px; border-radius: 12px; background: #edf7f4; color: #075b53; min-height: 20px; } #status.error { background: #fff0f0; color: #a91e2a; }
+    small { display:block; margin-top: 14px; color: #687b89; }
+  </style>
+</head>
+<body>
+  <main>
+    <span style="color:#078a7d;font-size:12px;font-weight:800;letter-spacing:.12em">CARECOMPASS · TWILIO DEMO</span>
+    <h1>Click to call</h1>
+    <p>Enter an E.164 number. Call status updates live after Twilio accepts the request.</p>
+    <label>Phone number<input id="to" type="tel" inputmode="tel" placeholder="+14155552671" autocomplete="tel" /></label>
+    <button id="call">Call</button>
+    <button id="myNumber" class="secondary" type="button">Call my number</button>
+    <label class="check"><input id="bridge" type="checkbox" /> Bridge to second number</label>
+    <p id="status" role="status">Ready.</p>
+    <small>Twilio trial accounts can only call verified destinations. No credentials are sent to this page.</small>
+  </main>
+  <script>
+    const to = document.querySelector('#to'), call = document.querySelector('#call'), mine = document.querySelector('#myNumber'), bridge = document.querySelector('#bridge'), status = document.querySelector('#status');
+    const terminal = new Set(['completed', 'busy', 'failed', 'no-answer', 'canceled']); let config = { default_to: '', bridge_to: '' }, timer;
+    function show(message, error = false) { status.textContent = message; status.className = error ? 'error' : ''; }
+    async function readError(response) { const body = await response.json().catch(() => ({})); const detail = body.detail || body; return typeof detail === 'string' ? detail : `${detail.error || 'Request failed'}${detail.code ? ` (${detail.code})` : ''}`; }
+    async function poll(sid) { clearInterval(timer); const check = async () => { const response = await fetch(`/call/${sid}`); if (!response.ok) { show(await readError(response), true); clearInterval(timer); return; } const body = await response.json(); show(`Call ${body.status}.`); if (terminal.has(body.status)) clearInterval(timer); }; await check(); timer = setInterval(check, 2000); }
+    async function place() { const number = to.value.trim(); const bridgeTo = bridge.checked ? config.bridge_to : null; if (bridge.checked && !bridgeTo) { show('No bridge number is configured.', true); return; } call.disabled = mine.disabled = true; show('Requesting call…'); try { const response = await fetch('/call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: number, bridge_to: bridgeTo }) }); if (!response.ok) throw new Error(await readError(response)); const body = await response.json(); show(`Call ${body.status}.`); poll(body.sid); } catch (error) { show(error.message || 'Call could not be placed.', true); } finally { call.disabled = mine.disabled = false; } }
+    call.addEventListener('click', place); mine.addEventListener('click', () => { if (!config.default_to) { show('DEFAULT_TO is not configured.', true); return; } to.value = config.default_to; place(); });
+    fetch('/config').then(response => response.json()).then(value => { config = value; mine.disabled = !config.default_to; }).catch(() => show('Could not load call defaults.', true));
+  </script>
+</body>
+</html>
