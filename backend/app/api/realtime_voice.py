@@ -8,7 +8,7 @@ from sarvamai import AsyncSarvamAI, RealtimeAudioInput
 from app.api.care import pipeline
 from app.api.voice import _sarvam_audio_reply
 from app.config import settings
-from app.core.voice_agent import conversational_reply, general_reply, route_from_understanding, understand_voice_turn
+from app.core.voice_agent import conversational_reply, general_reply, resolved_language, route_from_understanding, understand_voice_turn
 from app.schemas.care import CareRequest, ConversationTurn, Language, Location
 
 
@@ -74,10 +74,11 @@ async def realtime_voice(socket: WebSocket) -> None:
                         provisional = pipeline.run(request)
                         decision = await understand_voice_turn(history, transcript)
                         result = route_from_understanding(provisional, decision, request, language)
+                        reply_language = resolved_language(decision.language, language) if decision else language
                         history.append(ConversationTurn(role="user", content=transcript))
-                        spoken_text = await conversational_reply(history[:-1], transcript, result, language) if decision else await general_reply(history[:-1], transcript)
+                        spoken_text = await conversational_reply(history[:-1], transcript, result, reply_language) if decision else await general_reply(history[:-1], transcript, reply_language)
                         history.append(ConversationTurn(role="assistant", content=spoken_text))
-                        audio = await _sarvam_audio_reply(spoken_text, "hi-IN" if language == Language.HI else "en-IN")
+                        audio = await _sarvam_audio_reply(spoken_text, "hi-IN" if reply_language == Language.HI else "en-IN")
                         await socket.send_json({
                             "type": "final",
                             "transcript": transcript,

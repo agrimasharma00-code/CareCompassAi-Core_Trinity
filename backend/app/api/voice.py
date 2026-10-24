@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.api.care import pipeline
 from app.config import settings
-from app.core.voice_agent import conversational_reply, general_reply, resolved_language, route_from_understanding, understand_voice_turn
+from app.core.voice_agent import conversational_reply, general_reply, language_from_text, resolved_language, route_from_understanding, understand_voice_turn
 from app.schemas.care import CareRequest, CareResponse, ConversationTurn, Language, Location
 
 
@@ -34,6 +34,7 @@ async def _sarvam_audio_reply(text: str, language_code: str) -> str | None:
         "language_code": "hi-IN" if is_hindi else "en-IN",
         "model": "bulbul:v4-flash",
         "output_audio_codec": "wav",
+        "speech_sample_rate": 16000,
         # v4 Flash requires persona IDs; the old v2 name "anushka" returns 400.
         "speaker": "aparna_hi_customer" if is_hindi else "simran_enhi_customer",
         "pace": 1.0,
@@ -75,11 +76,11 @@ async def chat_with_agent(payload: AgentMessage) -> dict[str, object]:
     decision = await understand_voice_turn(payload.conversation_history, text)
     has_care_turn = bool(decision and (decision.care_type or decision.follow_up_question or decision.symptom_summary))
     result = route_from_understanding(provisional, decision, request, payload.language) if has_care_turn else None
+    language = resolved_language(decision.language, payload.language) if decision else language_from_text(text, payload.language)
     reply = (
-        await conversational_reply(payload.conversation_history, text, result, payload.language)
-        if result else await general_reply(payload.conversation_history, text)
+        await conversational_reply(payload.conversation_history, text, result, language)
+        if result else await general_reply(payload.conversation_history, text, language)
     )
-    language = resolved_language(decision.language, payload.language) if decision else payload.language
     audio = await _sarvam_audio_reply(reply, "hi-IN" if language == Language.HI else "en-IN")
     return {
         "reply": reply,

@@ -30,7 +30,8 @@ export default function PatientPage() {
     const audio = new Audio(`data:${audioMimeType};base64,${audioBase64}`);
     const finish = () => {
       if (agentAudioRef.current !== audio) return;
-      agentAudioRef.current = null; speakingRef.current = false; setSpeaking(false); setState("Listening… tell me more, or tap to end.");
+      agentAudioRef.current = null; speakingRef.current = false; setSpeaking(false);
+      setState(socketRef.current?.readyState === WebSocket.OPEN ? "Listening… tell me more, or tap to end." : "Care guidance is ready.");
     };
     agentAudioRef.current?.pause(); agentAudioRef.current = audio; speakingRef.current = true; setSpeaking(true); setState("CareCompass is speaking…");
     audio.onended = finish; audio.onerror = finish;

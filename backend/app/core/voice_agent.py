@@ -70,8 +70,25 @@ def _routing_context(result: CareResponse) -> str:
     )
 
 
-def _message_history(history: list[ConversationTurn], transcript: str, result: CareResponse) -> list[dict[str, str]]:
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+def language_instruction(language: Language) -> str:
+    if language == Language.HI:
+        return "Reply only in Hindi written in Devanagari script."
+    if language == Language.HINGLISH:
+        return "Reply only in natural Hinglish written in Roman script; do not switch to English-only sentences."
+    return "Reply only in clear Indian English."
+
+
+def language_from_text(text: str, fallback: Language = Language.AUTO) -> Language:
+    if re.search(r"[\u0900-\u097F]", text):
+        return Language.HI
+    markers = ("mujhe", "hai", "hain", "ko", "se", "bukhar", "khansi", "dard", "abhi", "thoda", "thora")
+    if any(re.search(rf"\b{marker}\b", text.lower()) for marker in markers):
+        return Language.HINGLISH
+    return fallback if fallback != Language.AUTO else Language.EN
+
+
+def _message_history(history: list[ConversationTurn], transcript: str, result: CareResponse, language: Language) -> list[dict[str, str]]:
+    messages = [{"role": "system", "content": SYSTEM_PROMPT + "\n" + language_instruction(language)}]
     messages.extend(
         {"role": turn.role, "content": turn.content}
         for turn in history[-12:]
@@ -176,11 +193,11 @@ def route_from_understanding(
     return provisional
 
 
-def _complete(history: list[ConversationTurn], transcript: str, result: CareResponse) -> str:
+def _complete(history: list[ConversationTurn], transcript: str, result: CareResponse, language: Language) -> str:
     client = SarvamAI(api_subscription_key=settings.sarvam_api_key)
     response = client.chat.completions(
         model="sarvam-105b-conversations",
-        messages=_message_history(history, transcript, result),
+        messages=_message_history(history, transcript, result, language),
         reasoning_effort=None,
         temperature=0.35,
         max_tokens=180,
@@ -196,14 +213,14 @@ async def conversational_reply(
     if not settings.sarvam_api_key:
         return fallback_reply(result)
     try:
-        return await asyncio.to_thread(_complete, history, transcript, result)
+        return await asyncio.to_thread(_complete, history, transcript, result, language)
     except Exception:
         return fallback_reply(result)
 
 
-def _general_complete(history: list[ConversationTurn], transcript: str) -> str:
+def _general_complete(history: list[ConversationTurn], transcript: str, language: Language) -> str:
     client = SarvamAI(api_subscription_key=settings.sarvam_api_key)
-    messages: list[dict[str, str]] = [{"role": "system", "content": GENERAL_CHAT_PROMPT}]
+    messages: list[dict[str, str]] = [{"role": "system", "content": GENERAL_CHAT_PROMPT + "\n" + language_instruction(language)}]
     messages.extend(
         {"role": turn.role, "content": turn.content}
         for turn in history[-12:]
@@ -220,12 +237,12 @@ def _general_complete(history: list[ConversationTurn], transcript: str) -> str:
     return str(response.choices[0].message.content or "").strip()[:900]
 
 
-async def general_reply(history: list[ConversationTurn], transcript: str) -> str:
+async def general_reply(history: list[ConversationTurn], transcript: str, language: Language = Language.AUTO) -> str:
     """Use Sarvam for ordinary conversation that does not yet need care routing."""
     if not settings.sarvam_api_key:
         return "Hello. Tell me what is happening, and I will help you find the right next step."
     try:
-        reply = await asyncio.to_thread(_general_complete, history, transcript)
+        reply = await asyncio.to_thread(_general_complete, history, transcript, language_from_text(transcript, language))
         return reply or "Hello. Tell me what is happening, and I will help you find the right next step."
     except Exception:
         return "I am here to help. Please tell me what is happening."
