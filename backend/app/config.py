@@ -21,7 +21,12 @@ class Settings(BaseSettings):
     # PathoVision never uses Sarvam's text-only chat model for images. Configure
     # one of these optional vision providers on the server when image analysis is needed.
     openai_api_key: str | None = None
-    openai_vision_model: str = "gpt-4o-mini"
+    # Google Gemini's OpenAI-compatible endpoint is supported by setting
+    # OPENAI_BASE=https://generativelanguage.googleapis.com/v1beta/openai.
+    openai_base: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-4o-mini"
+    openai_vision_model: str | None = None
+    pathovision_timeout_s: float = 50.0
     anthropic_api_key: str | None = None
     anthropic_vision_model: str = "claude-3-5-haiku-latest"
     ocr_engine: str = "tesseract"

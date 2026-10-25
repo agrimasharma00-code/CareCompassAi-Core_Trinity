@@ -43,7 +43,18 @@ TESSERACT_CMD=C:\\Program Files\\Tesseract-OCR\\tesseract.exe
 
 On Ubuntu/Debian, run `sudo apt install tesseract-ocr tesseract-ocr-hin`; leave `TESSERACT_CMD` blank when `tesseract` is on `PATH`.
 
-Image interpretation requires a vision-capable provider configured on the backend: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Sarvam's text-only chat model is deliberately not used for images. Without a vision key, PathoVision shows a specific configuration error rather than inventing a result. Written medical reports continue to use their own printed reference ranges only.
+For Gemini's OpenAI-compatible endpoint, put the following values in the repository `.env` (never in the frontend):
+
+```text
+OPENAI_BASE=https://generativelanguage.googleapis.com/v1beta/openai
+OPENAI_API_KEY=your-gemini-key
+OPENAI_MODEL=gemini-2.5-flash
+# Optional: overrides OPENAI_MODEL only for image analysis.
+OPENAI_VISION_MODEL=
+PATHOVISION_TIMEOUT_S=50
+```
+
+PathoVision uses `OPENAI_VISION_MODEL` when set, otherwise `OPENAI_MODEL`, and sends the call to `OPENAI_BASE`. Sarvam's text-only chat model is deliberately not used for images. Use **Check PathoVision setup** on `/pathovision` to verify the provider, PDF reader, Tesseract, and Hindi OCR data before uploading a sample file. Without a vision key, wound images show an explicit guided questionnaire rather than a fabricated analysis. Written medical reports continue to use their own printed reference ranges only.
 
 ## Demo roles (synthetic accounts)
 
