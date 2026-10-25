@@ -1,11 +1,14 @@
 """Confirmed demo bookings and re-triage workflow kept outside the scored endpoint."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.care import pipeline
 from app.api.ws import hub
 from app.core.live import create_alert, create_booking, list_bookings, update_booking
+from app.services.sms import current_booking_sms_recipient, send_booking_sms
 from app.schemas.care import CareRequest, CareResponse, Location
 
 
@@ -39,6 +42,8 @@ def get_bookings() -> list[dict[str, object]]:
 @router.post("")
 async def book(payload: BookingCreate) -> dict[str, object]:
     booking = create_booking(payload.model_dump())
+    if recipient := current_booking_sms_recipient():
+        asyncio.create_task(asyncio.to_thread(send_booking_sms, recipient, booking))
     await hub.publish("provider", {"type": "booking.created", "booking": booking})
     await hub.publish(f"patient:{booking['id']}", {"type": "booking.created", "booking": booking})
     return booking

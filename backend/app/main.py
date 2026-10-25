@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.care import router as care_router
@@ -11,6 +11,8 @@ from app.api.ws import router as ws_router
 from app.api.metrics import router as metrics_router
 from app.api.wellness import router as wellness_router
 from app.api.pathovision import router as pathovision_router
+from app.api.location import router as location_router
+from app.services.sms import reset_booking_sms_recipient, set_booking_sms_recipient
 
 
 app = FastAPI(title="Niramaya API", version="0.1.0")
@@ -31,6 +33,15 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def capture_optional_booking_phone(request: Request, call_next):
+    token = set_booking_sms_recipient(request.headers.get("X-Patient-Phone") if request.url.path == "/api/v1/bookings" and request.method == "POST" else None)
+    try:
+        return await call_next(request)
+    finally:
+        reset_booking_sms_recipient(token)
 app.include_router(care_router)
 app.include_router(voice_router)
 app.include_router(realtime_voice_router)
@@ -41,6 +52,7 @@ app.include_router(ws_router)
 app.include_router(metrics_router)
 app.include_router(wellness_router)
 app.include_router(pathovision_router)
+app.include_router(location_router)
 
 
 @app.get("/health")

@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     availability_weight: float = 0.20
     language_weight: float = 0.10
     rating_weight: float = 0.10
+    twilio_account_sid: str | None = None
+    twilio_auth_token: str | None = None
+    twilio_phone_number: str | None = None
+    sms_enabled: bool = False
+    sms_default_country_code: str = "+91"
 
 
 settings = Settings()

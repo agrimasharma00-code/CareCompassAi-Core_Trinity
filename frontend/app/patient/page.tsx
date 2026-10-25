@@ -6,18 +6,32 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "../../lib/api";
 
 type Caregiver = { caregiver_id: string; score: number; reason: string };
-type CareResult = { follow_up_question: string | null; care_type: string | null; urgency: string | null; red_flags: string[]; reasoning: string; matched_caregivers: Caregiver[]; safety_netting?: string; why_not?: string; handoff_summary?: string };
+type CaregiverProfile = { caregiver_id: string; name: string; role: string; qualification: string; rating: number; experience_years: number; base_area: string };
+type CareResult = { follow_up_question: string | null; care_type: string | null; urgency: string | null; red_flags: string[]; reasoning: string; matched_caregivers: Caregiver[]; caregiver_profiles?: CaregiverProfile[]; safety_netting?: string; why_not?: string; handoff_summary?: string };
 type Turn = { role: "user" | "assistant"; content: string };
 type VoiceMessage = { type: string; text?: string; transcript?: string; response?: CareResult; agent_reply?: string; audio_base64?: string; audio_mime_type?: string; message?: string; alert?: unknown };
 type Booking = { id: string; status: string; caregiver_id: string };
+type PatientLocation = { lat: number; lng: number };
+const PATIENT_LOCATION_KEY = "niramaya_patient_location";
 
 const careNames: Record<string, string> = { paramedic_home_visit: "Medic home visit", lab_test_home: "Home lab test", nurse: "Home nursing support", gp_teleconsult: "Virtual GP consultation", specialist: "Specialist consultation", emergency_referral: "Emergency support" };
+
+function orderedCaregivers(result: CareResult): Caregiver[] {
+  return result.matched_caregivers;
+}
+
+function caregiverLabel(result: CareResult, caregiver: Caregiver): { name: string; details: string } {
+  const profile = result.caregiver_profiles?.find((candidate) => candidate.caregiver_id === caregiver.caregiver_id);
+  if (!profile) return { name: caregiver.caregiver_id, details: caregiver.reason };
+  return { name: profile.name, details: `${profile.qualification} · ★ ${profile.rating.toFixed(1)} · ${profile.experience_years} years experience · ${profile.base_area}` };
+}
 
 export default function PatientPage() {
   const [input, setInput] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [result, setResult] = useState<CareResult | null>(null);
   const [booking, setBooking] = useState<Booking | null>(null);
+  const [bookingPhone, setBookingPhone] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
@@ -33,6 +47,15 @@ export default function PatientPage() {
   const speakingRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(PATIENT_LOCATION_KEY);
+      if (!stored) return;
+      const saved = JSON.parse(stored) as PatientLocation;
+      if (Number.isFinite(saved.lat) && Number.isFinite(saved.lng)) setLocation(saved);
+    } catch { sessionStorage.removeItem(PATIENT_LOCATION_KEY); }
+  }, []);
 
   useEffect(() => {
     if (!booking?.id) return;
@@ -107,7 +130,8 @@ export default function PatientPage() {
     if (!result?.care_type || !result.urgency) return;
     setBusy(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/bookings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ caregiver_id: caregiver.caregiver_id, patient_name: "Demo patient", care_type: result.care_type, urgency: result.urgency, summary: result.handoff_summary || result.reasoning }) });
+      const headers: Record<string, string> = { "Content-Type": "application/json" }; if (bookingPhone.trim()) headers["X-Patient-Phone"] = bookingPhone.trim();
+      const response = await fetch(`${API_BASE_URL}/api/v1/bookings`, { method: "POST", headers, body: JSON.stringify({ caregiver_id: caregiver.caregiver_id, patient_name: "Demo patient", care_type: result.care_type, urgency: result.urgency, summary: result.handoff_summary || result.reasoning }) });
       if (!response.ok) throw new Error("Booking could not be confirmed.");
       const confirmed = await response.json(); setBooking(confirmed); setStatus(`Booking ${confirmed.id} is confirmed as pending provider acceptance.`);
     } catch (error) { setStatus(error instanceof Error ? error.message : "Booking could not be confirmed."); }
@@ -216,7 +240,7 @@ export default function PatientPage() {
   function useLocation() {
     if (!navigator.geolocation) { setStatus("Location access is unavailable. Using the default service area."); return; }
     navigator.geolocation.getCurrentPosition(
-      (position) => { setLocation({ lat: position.coords.latitude, lng: position.coords.longitude }); setStatus("Location updated for care matching."); },
+      (position) => { const next = { lat: position.coords.latitude, lng: position.coords.longitude }; setLocation(next); sessionStorage.setItem(PATIENT_LOCATION_KEY, JSON.stringify(next)); setStatus("Location updated for nearby available-doctor matching."); },
       () => setStatus("Location was not shared. Using the default service area."),
     );
   }
@@ -224,7 +248,7 @@ export default function PatientPage() {
   const emergency = result?.care_type === "emergency_referral";
   return <main className="container" style={{ maxWidth: 900, padding: "24px 0 64px" }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}><Link href="/" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 700 }}>← Niramaya</Link><nav style={{ display: "flex", gap: 16, alignItems: "center" }}><Link href="/pathovision" style={{ color: "#0b5c63", textDecoration: "none", fontWeight: 800, fontSize: 14 }}>⌁ PathoVision</Link><Link href="/serenemind" style={{ color: "#6651a8", textDecoration: "none", fontWeight: 800, fontSize: 14 }}>✦ SereneMind</Link><Link href="/dial" style={{ color: "var(--teal)", textDecoration: "none", fontWeight: 800, fontSize: 14 }}>Dial NOVA 99990000 →</Link></nav></header>
-    <section style={{ marginTop: 42, maxWidth: 710 }}><span className="eyebrow">CareAgent Nexus</span><h1 style={{ fontSize: "clamp(36px, 6vw, 58px)", margin: "10px 0" }}>Let&apos;s find the right care.</h1><p className="muted" style={{ fontSize: 18, lineHeight: 1.6 }}>Speak or type in English, Hindi, or Hinglish. Niramaya helps navigate care; it does not diagnose or prescribe.</p><a href="tel:5555" onClick={notifyEmergencyContacts} className="button" style={{ marginTop: 16, display: "inline-block", background: "#a91e2a", textDecoration: "none" }}>Emergency? Call 5555</a></section>
+    <section style={{ marginTop: 42, maxWidth: 710 }}><span className="eyebrow">CareAgent Nexus</span><h1 style={{ fontSize: "clamp(36px, 6vw, 58px)", margin: "10px 0" }}>Let&apos;s find the right care.</h1><p className="muted" style={{ fontSize: 18, lineHeight: 1.6 }}>Speak or type in English, Hindi, or Hinglish. Niramaya helps navigate care; it does not diagnose or prescribe.</p><a href="tel:5555" onClick={notifyEmergencyContacts} className="button emergency-button" style={{ marginTop: 16, display: "inline-block", background: "#a91e2a", textDecoration: "none" }}>Emergency? Call 5555</a></section>
     <section className="card" style={{ marginTop: 28, padding: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><div><span className="eyebrow">Live voice conversation</span><h2 style={{ margin: "7px 0 0", fontSize: 26 }}>Talk to Niramaya</h2></div><button type="button" onClick={startVoice} disabled={busy} className="button" style={{ background: listening ? "#a91e2a" : "var(--teal)" }}>{listening ? (speaking ? "Niramaya is speaking…" : "■ End voice") : "● Talk to Niramaya"}</button></div>
       <p className="muted" style={{ margin: "12px 0 0", fontSize: 14 }}>Your words and the agent&apos;s reply appear in this conversation. Allow microphone access when asked.</p>
@@ -237,9 +261,9 @@ export default function PatientPage() {
     </section>
     {status && <p role="status" className="pill" style={{ marginTop: 16 }}>{status}</p>}
     {emergency && <section className="danger" style={{ marginTop: 24 }}><a href="tel:5555" onClick={notifyEmergencyContacts} className="button" style={{ background: "white", color: "#a91e2a", textDecoration: "none" }}>Call 5555 now</a><h2 style={{ margin: "20px 0 7px", fontSize: 29 }}>This may need immediate care.</h2><p style={{ margin: 0 }}>{result?.reasoning}</p><p style={{ margin: "12px 0 0", fontSize: 14 }}>After you tap Call 5555, Niramaya also creates a clearly labelled demo dispatch alert for family contact and the ambulance partner.</p></section>}
-    {result && !emergency && <section className="card" style={{ marginTop: 24, padding: 24 }}><span className="pill">{result.urgency?.replace("_", " ") ?? "Care guidance"}</span><h2 style={{ margin: "12px 0 6px", fontSize: 26 }}>{result.follow_up_question ? "One quick question" : careNames[result.care_type ?? ""] ?? "Care option"}</h2><p className="muted" style={{ lineHeight: 1.6 }}>{result.follow_up_question ?? result.reasoning}</p>{result.matched_caregivers.length > 0 && <div className="grid" style={{ marginTop: 16 }}>{result.matched_caregivers.map((caregiver) => <div key={caregiver.caregiver_id} style={{ border: "1px solid #e4ece9", borderRadius: 15, padding: 16 }}><strong>{caregiver.caregiver_id}</strong><p className="muted" style={{ margin: "7px 0 0", fontSize: 14 }}>{caregiver.reason}</p></div>)}</div>}</section>}
+    {result && !emergency && <section className="card" style={{ marginTop: 24, padding: 24 }}><span className="pill">{result.urgency?.replace("_", " ") ?? "Care guidance"}</span><h2 style={{ margin: "12px 0 6px", fontSize: 26 }}>{result.follow_up_question ? "One quick question" : careNames[result.care_type ?? ""] ?? "Care option"}</h2><p className="muted" style={{ lineHeight: 1.6 }}>{result.follow_up_question ?? result.reasoning}</p>{result.matched_caregivers.length > 0 && <><p className="muted" style={{ margin: "14px 0 0", fontSize: 13 }}>Ranked for your selected area, symptoms, availability, language, and rating.</p><div className="grid" style={{ marginTop: 16 }}>{orderedCaregivers(result).map((caregiver, index) => { const label = caregiverLabel(result, caregiver); return <div key={caregiver.caregiver_id} style={{ border: index === 0 ? "2px solid #17a28f" : "1px solid #e4ece9", borderRadius: 15, padding: 16 }}><strong>{index === 0 ? "Best match · " : ""}{label.name}</strong><p className="muted" style={{ margin: "7px 0 0", fontSize: 14 }}>{label.details}</p><p className="muted" style={{ margin: "7px 0 0", fontSize: 13 }}>{caregiver.reason}</p></div>; })}</div></>}</section>}
     {result && <section className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", marginTop: 16 }}><article className="card" style={{ padding: 20 }}><span className="eyebrow">Safety net</span><p style={{ lineHeight: 1.55 }}>{result.safety_netting || "If symptoms get worse, call 5555 immediately."}</p></article><article className="card" style={{ padding: 20 }}><span className="eyebrow">Why this route</span><p style={{ lineHeight: 1.55 }}>{result.why_not || result.reasoning}</p></article><article className="card" style={{ padding: 20 }}><span className="eyebrow">Provider handoff</span><p style={{ lineHeight: 1.55 }}>{result.handoff_summary || result.reasoning}</p></article></section>}
-    {result && !emergency && result.matched_caregivers.length > 0 && <section className="card" style={{ marginTop: 16, padding: 20 }}><span className="eyebrow">One-tap booking</span><h2 style={{ margin: "8px 0 14px" }}>Choose a matched caregiver</h2><div className="grid">{result.matched_caregivers.map((caregiver) => <div key={`book-${caregiver.caregiver_id}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, borderTop: "1px solid #e4ece9", paddingTop: 12 }}><div><strong>{caregiver.caregiver_id}</strong><p className="muted" style={{ margin: "3px 0 0", fontSize: 14 }}>{caregiver.reason}</p></div><button className="button" onClick={() => bookCaregiver(caregiver)} disabled={busy}>Book</button></div>)}</div>{booking && <div style={{ marginTop: 16 }}><span className="pill">{booking.id}: {booking.status}</span><button className="button" style={{ marginLeft: 10 }} onClick={simulateReTriage} disabled={busy}>Simulate 6-hour check-in</button></div>}</section>}
+    {result && !emergency && result.matched_caregivers.length > 0 && <section className="card" style={{ marginTop: 16, padding: 20 }}><span className="eyebrow">One-tap booking</span><h2 style={{ margin: "8px 0 14px" }}>Book the best nearby available match</h2><label style={{ display: "block", marginBottom: 14, fontSize: 14, fontWeight: 700 }}>Mobile for optional SMS confirmation <span className="muted" style={{ fontWeight: 400 }}>(optional)</span><input type="tel" value={bookingPhone} onChange={(event) => setBookingPhone(event.target.value)} placeholder="+91 98765 43210" style={{ display: "block", width: "100%", marginTop: 7, padding: 11, border: "1px solid #dce7e4", borderRadius: 10, font: "inherit" }} /></label><div className="grid">{orderedCaregivers(result).map((caregiver, index) => { const label = caregiverLabel(result, caregiver); return <div key={`book-${caregiver.caregiver_id}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, borderTop: "1px solid #e4ece9", paddingTop: 12 }}><div><strong>{index === 0 ? "Best match · " : ""}{label.name}</strong><p className="muted" style={{ margin: "3px 0 0", fontSize: 14 }}>{label.details}</p><p className="muted" style={{ margin: "3px 0 0", fontSize: 13 }}>{caregiver.reason}</p></div><button className="button" onClick={() => bookCaregiver(caregiver)} disabled={busy}>{index === 0 ? "Book best match" : "Book"}</button></div>; })}</div>{booking && <div style={{ marginTop: 16 }}><span className="pill">{booking.id}: {booking.status}</span><button className="button" style={{ marginLeft: 10 }} onClick={simulateReTriage} disabled={busy}>Simulate 6-hour check-in</button></div>}</section>}
     {voiceMode && <section className="voice-mode" role="dialog" aria-label="Niramaya voice conversation">
       <div className="voice-mode-top"><span className="voice-mode-brand">✳ Niramaya</span><button type="button" className="voice-close" onClick={() => stopVoice("Voice session ended.")} aria-label="Close voice conversation">×</button></div>
       <div className="voice-stage"><div className={`voice-orb ${speaking ? "voice-orb-speaking" : ""} ${listening && !speaking ? "voice-orb-listening" : ""}`} aria-hidden="true" /><p className="voice-status">{speaking ? "Niramaya is speaking" : muted ? "Microphone is muted" : liveTranscript || (listening ? "Listening…" : "Connecting to Niramaya…")}</p>{turns.length > 0 && <p className="voice-last-reply">{turns[turns.length - 1].content}</p>}</div>

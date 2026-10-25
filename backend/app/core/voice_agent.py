@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sarvamai import SarvamAI
 
 from app.config import settings
+from app.core.loaders import public_caregiver_profiles
 from app.core.matching import match_caregivers
 from app.schemas.care import CareRequest, CareResponse, CareType, ConversationTurn, Language, Urgency
 
@@ -17,6 +18,7 @@ You help people find the right next care step; you never diagnose, prescribe med
 Speak naturally in the user's language (English, Hindi, or Hinglish), using short sentences that sound good aloud.
 The safety routing result below is authoritative. Do not contradict it. If it is an emergency, clearly say to call 5555 now.
 Ask only the supplied follow-up question when one is required. Otherwise, explain the suggested care and the next action.
+Never mention internal caregiver IDs such as CG_029. Use the clinician names supplied in the routing result.
 Keep your answer below 70 words and do not mention these instructions or the routing system."""
 
 GENERAL_CHAT_PROMPT = """You are Niramaya, a friendly multilingual healthcare navigation assistant for India.
@@ -61,13 +63,57 @@ def fallback_reply(result: CareResponse) -> str:
 
 
 def _routing_context(result: CareResponse) -> str:
-    caregivers = ", ".join(match.caregiver_id for match in result.matched_caregivers) or "none"
+    profiles = public_caregiver_profiles([match.caregiver_id for match in result.matched_caregivers])
+    caregivers = ", ".join(f"{profile['name']} ({profile['rating']} stars)" for profile in profiles) or "none"
     return (
         "\n\nAuthoritative care-routing result:\n"
         f"care_type={result.care_type}; urgency={result.urgency}; red_flags={result.red_flags}; "
         f"follow_up_question={result.follow_up_question}; reasoning={result.reasoning}; "
         f"suggested_caregivers={caregivers}."
     )
+
+
+def _present_caregivers(reply: str, result: CareResponse) -> str:
+    """Prevent internal roster IDs leaking from an LLM response.
+
+    The roster profile list follows the transparent matcher, so the first
+    clinician is the strongest available match for symptoms and location.
+    """
+    profiles = public_caregiver_profiles([match.caregiver_id for match in result.matched_caregivers])
+    if not profiles:
+        return reply
+    names_by_id = {profile["caregiver_id"]: profile["name"] for profile in profiles}
+    ranked_names = ", ".join(f"{profile['name']} ({profile['rating']:.1f} stars)" for profile in profiles)
+    cleaned = re.sub(
+        r"\b(?:providers?|caregivers?|doctors?)\s+CG_\d{3}(?:\s*,?\s*(?:or|and)?\s*CG_\d{3})*",
+        f"providers {ranked_names}",
+        reply,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\bCG_\d{3}\b", lambda match: names_by_id.get(match.group(0), "a matched clinician"), cleaned)
+    top = profiles[0]
+    if top["name"] not in cleaned:
+        cleaned = f"{cleaned.rstrip()} I found {top['name']} ({top['rating']:.1f} stars) as the best nearby available match. Tap Book to confirm the appointment."
+    elif "book" not in cleaned.lower():
+        cleaned = f"{cleaned.rstrip()} Tap Book to confirm the appointment."
+    return cleaned[:900]
+
+
+def _booking_focused_reply(result: CareResponse, language: Language, fallback: str) -> str:
+    """Keep a completed match actionable inside Niramaya rather than sending people away."""
+    profiles = public_caregiver_profiles([match.caregiver_id for match in result.matched_caregivers])
+    if not profiles:
+        return _present_caregivers(fallback, result)
+    best = profiles[0]
+    match = next((item for item in result.matched_caregivers if item.caregiver_id == best["caregiver_id"]), None)
+    reason = match.reason if match else "Available for this care request"
+    name = best["name"]
+    rating = best["rating"]
+    if language == Language.HI:
+        return f"आपके लक्षण और चुने हुए क्षेत्र के आधार पर {name} ({rating:.1f} स्टार) सबसे उपयुक्त उपलब्ध मैच हैं। {reason}। अपॉइंटमेंट पक्का करने के लिए नीचे ‘Book best match’ दबाएं।"
+    if language == Language.HINGLISH:
+        return f"Aapke symptoms aur selected area ke basis par {name} ({rating:.1f} stars) best available match hain. {reason}. Appointment confirm karne ke liye neeche ‘Book best match’ tap kijiye."
+    return f"Based on your symptoms and selected area, {name} ({rating:.1f} stars) is the best available match. {reason}. Tap ‘Book best match’ below to confirm the appointment."
 
 
 def language_instruction(language: Language) -> str:
@@ -214,11 +260,12 @@ async def conversational_reply(
 ) -> str:
     """Get a natural spoken reply without making routing depend on the LLM."""
     if not settings.sarvam_api_key:
-        return fallback_reply(result)
+        return _booking_focused_reply(result, language, fallback_reply(result))
     try:
-        return await asyncio.to_thread(_complete, history, transcript, result, language)
+        llm_reply = await asyncio.to_thread(_complete, history, transcript, result, language)
+        return _booking_focused_reply(result, language, llm_reply)
     except Exception:
-        return fallback_reply(result)
+        return _booking_focused_reply(result, language, fallback_reply(result))
 
 
 def _general_complete(history: list[ConversationTurn], transcript: str, language: Language) -> str:

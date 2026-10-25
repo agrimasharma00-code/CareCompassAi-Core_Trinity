@@ -20,6 +20,16 @@ DATASET_CARE_TYPE_MAP = {
 DATASET_URGENCY_MAP = {"emergency": "immediate", "same_day": "same_day", "scheduled": "routine"}
 
 
+@lru_cache
+def load_dataset() -> tuple[dict[str, Any], ...]:
+    """Return raw dataset-contract rows for augmentation and evaluation helpers."""
+    dataset = RAW_DATA_DIR / "triage_dataset.jsonl"
+    if not dataset.exists():
+        return ()
+    with dataset.open(encoding="utf-8") as handle:
+        return tuple(json.loads(line) for line in handle if line.strip())
+
+
 def _load_json(filename: str) -> Any:
     with (DATA_DIR / filename).open(encoding="utf-8") as handle:
         return json.load(handle)
@@ -41,7 +51,12 @@ def load_caregivers() -> list[dict[str, Any]]:
     return [
         {
             "id": row["caregiver_id"],
+            "name": row["name"],
             "role": row["role"],
+            "qualification": row["qualification"],
+            "gender": row["gender"],
+            "base_area": row["base_area"],
+            "experience_years": int(row["experience_years"]),
             "care_types": role_map.get(row["role"], ()),
             "languages": [_normalise_language(value) for value in row["languages"].split(";")],
             "skills": row["skills"].split(";"),
@@ -54,6 +69,24 @@ def load_caregivers() -> list[dict[str, Any]]:
         }
         for row in rows
         if row.get("active", "").strip().lower() == "true"
+    ]
+
+
+def public_caregiver_profiles(caregiver_ids: list[str]) -> list[dict[str, Any]]:
+    """Return human-readable roster details in the matcher's ranked order."""
+    roster_by_id = {caregiver["id"]: caregiver for caregiver in load_caregivers()}
+    return [
+        {
+            "caregiver_id": caregiver["id"],
+            "name": caregiver["name"],
+            "role": caregiver["role"],
+            "qualification": caregiver["qualification"],
+            "rating": caregiver["rating"],
+            "experience_years": caregiver["experience_years"],
+            "base_area": caregiver["base_area"],
+        }
+        for caregiver_id in caregiver_ids
+        if (caregiver := roster_by_id.get(caregiver_id)) is not None
     ]
 
 

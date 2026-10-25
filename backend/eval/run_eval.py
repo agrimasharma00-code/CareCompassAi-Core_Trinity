@@ -18,7 +18,7 @@ from app.schemas.care import CareRequest, CareResponse, Location  # noqa: E402
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vignettes", type=Path, help="Optional JSON or JSONL evaluation file. Defaults to supplied raw dataset.")
+    parser.add_argument("--vignettes", "--input", dest="vignettes", type=Path, help="Optional JSON or JSONL evaluation file. Defaults to supplied raw dataset.")
     parser.add_argument("--output", type=Path, default=ROOT / "eval" / "predictions.csv")
     args = parser.parse_args()
     if args.vignettes:
