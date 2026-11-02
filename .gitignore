@@ -15,3 +15,11 @@ backend/models/*.joblib
 frontend/next-dev*.log
 backend/data/carecompass_demo.sqlite3
 backend/eval/predictions.csv
+ml/data/
+ml/artifacts/
+ml/reports/
+ml_service/__pycache__/
+*.pt
+*.pth
+*.onnx
+.ipynb_checkpoints/

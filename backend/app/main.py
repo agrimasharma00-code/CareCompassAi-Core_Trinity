@@ -12,6 +12,8 @@ from app.api.metrics import router as metrics_router
 from app.api.wellness import router as wellness_router
 from app.api.pathovision import router as pathovision_router
 from app.api.location import router as location_router
+from app.api.intake_features import router as intake_features_router
+from app.db.database import initialize_database
 from app.services.sms import reset_booking_sms_recipient, set_booking_sms_recipient
 
 
@@ -53,6 +55,13 @@ app.include_router(metrics_router)
 app.include_router(wellness_router)
 app.include_router(pathovision_router)
 app.include_router(location_router)
+app.include_router(intake_features_router)
+
+
+@app.on_event("startup")
+def initialize_patient_intake_storage() -> None:
+    # Add the new JSON patient-intake table without seeding or rewriting accounts.
+    initialize_database(demo_password="")
 
 
 @app.get("/health")

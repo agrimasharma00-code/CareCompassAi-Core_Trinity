@@ -1,0 +1,9 @@
+fastapi>=0.110,<1
+uvicorn[standard]>=0.27,<1
+python-multipart>=0.0.9,<1
+torch>=2.2,<3
+torchvision>=0.17,<1
+numpy>=1.26,<3
+Pillow>=10,<13
+opencv-python-headless>=4.9,<5
+PyYAML>=6,<7

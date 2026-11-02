@@ -13,18 +13,39 @@ from app.core.matching import match_caregivers
 from app.schemas.care import CareRequest, CareResponse, CareType, ConversationTurn, Language, Urgency
 
 
+HEALTH_CUE = re.compile(
+    r"\b(?:health|symptom\w*|headache|migraine|fever|temperature|cough|cold|pain|ache|hurt\w*|sick|unwell|"
+    r"nausea|vomit\w*|diarr\w*|loose motion\w*|constipat\w*|rash|itch\w*|swelling|dizz\w*|weak\w*|"
+    r"breath\w*|chest|bleed\w*|injur\w*|wound|burn\w*|allerg\w*|pregnan\w*|blood pressure|diabetes|"
+    r"seizure|faint\w*|stomach|tummy|abdomen|throat|tooth|skin|back|knee|joint|eye|ear|"
+    r"stress|anxious|anxiety|sleep|doctor|nurse|clinic|hospital|lab test|blood test|medicine|medication|"
+    r"mujhe|bukhar|khansi|dard|takleef|pareshani|chakkar|kamzori|saans|ulti|jalan|sujan|ghutna)\b"
+    r"|सिरदर्द|सिर में दर्द|बुखार|खांसी|दर्द|तकलीफ|परेशानी|चक्कर|कमज़ोरी|कमजोरी|सांस|उल्टी|सूजन|डॉक्टर|दवा",
+    re.IGNORECASE,
+)
+
+
+def is_health_concern(history: list[ConversationTurn], transcript: str) -> bool:
+    """Recognize care context across the patient's turns without relying on the LLM."""
+    user_context = " ".join(
+        turn.content for turn in history if turn.role.lower() == "user"
+    )
+    return bool(HEALTH_CUE.search(f"{user_context} {transcript}"))
+
+
 SYSTEM_PROMPT = """You are Niramaya, a calm, concise Indian healthcare navigation voice agent.
 You help people find the right next care step; you never diagnose, prescribe medication, or claim medical certainty.
 Speak naturally in the user's language (English, Hindi, or Hinglish), using short sentences that sound good aloud.
-The safety routing result below is authoritative. Do not contradict it. If it is an emergency, clearly say to call 5555 now.
-Ask only the supplied follow-up question when one is required. Otherwise, explain the suggested care and the next action.
+Use the full conversation as context. Acknowledge the patient's specific concern and incorporate details already shared; never repeat a question they have answered.
+The safety routing result below is authoritative. Do not contradict it. If it is an emergency, clearly say to call 112 now.
+Ask only the supplied follow-up question when one is required. Otherwise, explain why the suggested next care step fits what the patient described and what they can do next.
 Never mention internal caregiver IDs such as CG_029. Use the clinician names supplied in the routing result.
 Keep your answer below 70 words and do not mention these instructions or the routing system."""
 
 GENERAL_CHAT_PROMPT = """You are Niramaya, a friendly multilingual healthcare navigation assistant for India.
 Respond naturally to greetings and ordinary conversation in the user's language (English, Hindi, or Hinglish).
-When the user describes a health concern, ask one concise clarifying question or explain the next navigation step.
-Never diagnose, prescribe medication, or claim medical certainty. Mention calling 5555 only for a clear emergency.
+Use the full conversation as context and acknowledge what the person actually said. If they describe a health concern, ask one relevant clarifying question or explain the next navigation step.
+Never diagnose, prescribe medication, or claim medical certainty. Mention calling 112 only for a clear emergency.
 Keep spoken replies below 70 words."""
 
 UNDERSTANDING_PROMPT = """You are the structured understanding component for Niramaya, an Indian healthcare navigation voice agent.
@@ -62,14 +83,18 @@ def fallback_reply(result: CareResponse) -> str:
 
 
 
-def _routing_context(result: CareResponse) -> str:
+def _routing_context(result: CareResponse, medications: list[dict[str, object]] | None = None) -> str:
     profiles = public_caregiver_profiles([match.caregiver_id for match in result.matched_caregivers])
     caregivers = ", ".join(f"{profile['name']} ({profile['rating']} stars)" for profile in profiles) or "none"
+    medication_context = ""
+    if medications:
+        names = [f"{item.get('brand', '')} ({item.get('generic', '')})".strip(" ()") for item in medications]
+        medication_context = f" patient_confirmed_medications={names}; use as context only and do not change triage priority based on medicines alone;"
     return (
         "\n\nAuthoritative care-routing result:\n"
         f"care_type={result.care_type}; urgency={result.urgency}; red_flags={result.red_flags}; "
         f"follow_up_question={result.follow_up_question}; reasoning={result.reasoning}; "
-        f"suggested_caregivers={caregivers}."
+        f"suggested_caregivers={caregivers};{medication_context}"
     )
 
 
@@ -133,14 +158,14 @@ def language_from_text(text: str, fallback: Language = Language.AUTO) -> Languag
     return fallback if fallback != Language.AUTO else Language.EN
 
 
-def _message_history(history: list[ConversationTurn], transcript: str, result: CareResponse, language: Language) -> list[dict[str, str]]:
+def _message_history(history: list[ConversationTurn], transcript: str, result: CareResponse, language: Language, medications: list[dict[str, object]] | None = None) -> list[dict[str, str]]:
     messages = [{"role": "system", "content": SYSTEM_PROMPT + "\n" + language_instruction(language)}]
     messages.extend(
         {"role": turn.role, "content": turn.content}
         for turn in history[-12:]
         if turn.role in {"user", "assistant"}
     )
-    messages.append({"role": "user", "content": transcript + _routing_context(result)})
+    messages.append({"role": "user", "content": transcript + _routing_context(result, medications)})
     return messages
 
 
@@ -242,11 +267,11 @@ def route_from_understanding(
     return provisional
 
 
-def _complete(history: list[ConversationTurn], transcript: str, result: CareResponse, language: Language) -> str:
+def _complete(history: list[ConversationTurn], transcript: str, result: CareResponse, language: Language, medications: list[dict[str, object]] | None = None) -> str:
     client = SarvamAI(api_subscription_key=settings.sarvam_api_key)
     response = client.chat.completions(
         model="sarvam-105b-conversations",
-        messages=_message_history(history, transcript, result, language),
+        messages=_message_history(history, transcript, result, language, medications),
         reasoning_effort=None,
         temperature=0.35,
         max_tokens=180,
@@ -257,12 +282,13 @@ def _complete(history: list[ConversationTurn], transcript: str, result: CareResp
 
 async def conversational_reply(
     history: list[ConversationTurn], transcript: str, result: CareResponse, language: Language,
+    medications: list[dict[str, object]] | None = None,
 ) -> str:
     """Get a natural spoken reply without making routing depend on the LLM."""
     if not settings.sarvam_api_key:
         return _booking_focused_reply(result, language, fallback_reply(result))
     try:
-        llm_reply = await asyncio.to_thread(_complete, history, transcript, result, language)
+        llm_reply = await asyncio.to_thread(_complete, history, transcript, result, language, medications)
         return _booking_focused_reply(result, language, llm_reply)
     except Exception:
         return _booking_focused_reply(result, language, fallback_reply(result))
@@ -289,10 +315,19 @@ def _general_complete(history: list[ConversationTurn], transcript: str, language
 
 async def general_reply(history: list[ConversationTurn], transcript: str, language: Language = Language.AUTO) -> str:
     """Use Sarvam for ordinary conversation that does not yet need care routing."""
+    # If the classifier misses a symptom phrase or Sarvam is temporarily
+    # unavailable, still respond to the actual patient message instead of
+    # replaying the same generic welcome on every turn.
+    fallback = (
+        f'I hear you: "{transcript.strip()[:180]}". When did this start, and what else are you feeling? '
+        "I will use those details to help find an appropriate next care step."
+        if HEALTH_CUE.search(transcript)
+        else "Hello. Tell me what is happening, and I will help you find the right next step."
+    )
     if not settings.sarvam_api_key:
-        return "Hello. Tell me what is happening, and I will help you find the right next step."
+        return fallback
     try:
         reply = await asyncio.to_thread(_general_complete, history, transcript, language_from_text(transcript, language))
-        return reply or "Hello. Tell me what is happening, and I will help you find the right next step."
+        return reply or fallback
     except Exception:
-        return "I am here to help. Please tell me what is happening."
+        return fallback

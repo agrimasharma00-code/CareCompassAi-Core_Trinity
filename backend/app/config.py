@@ -9,8 +9,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    # Keep secrets in the repository-root .env regardless of where Uvicorn starts.
-    model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", extra="ignore")
+    # Support the repository-root .env and the documented backend/.env. Values
+    # in backend/.env override root values when non-empty; empty template
+    # assignments are ignored so they cannot mask a configured root secret.
+    model_config = SettingsConfigDict(env_file=(PROJECT_ROOT / ".env", PROJECT_ROOT / "backend" / ".env"), env_ignore_empty=True, extra="ignore")
 
     sarvam_api_key: str | None = None
     sarvam_chat_model: str = "sarvam-105b-conversations"
@@ -24,7 +26,7 @@ class Settings(BaseSettings):
     # Google Gemini's OpenAI-compatible endpoint is supported by setting
     # OPENAI_BASE=https://generativelanguage.googleapis.com/v1beta/openai.
     openai_base: str = "https://api.openai.com/v1"
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = "gpt-5.4-mini"
     openai_vision_model: str | None = None
     pathovision_timeout_s: float = 50.0
     anthropic_api_key: str | None = None
@@ -46,6 +48,7 @@ class Settings(BaseSettings):
     twilio_phone_number: str | None = None
     sms_enabled: bool = False
     sms_default_country_code: str = "+91"
+    ml_service_url: str = "http://127.0.0.1:8001"
 
 
 settings = Settings()

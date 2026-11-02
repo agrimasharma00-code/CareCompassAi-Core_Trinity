@@ -173,7 +173,7 @@ export default function NovaDialPage() {
         <span className="nova-eyebrow">DIAL 99990000</span><h1>Talk to intelligence.</h1><p>Dial NOVA for a real multilingual voice conversation powered by Sarvam. Speak naturally in English, Hindi, or Hinglish.</p>
         <div className="nova-privacy"><strong>Microphone privacy</strong><span>Microphone capture is active only during a connected call. Audio is not saved by this app.</span><label><input type="checkbox" checked={historyEnabled} onChange={(event) => setHistoryEnabled(event.target.checked)} /> Save this call&apos;s text transcript locally</label><button type="button" onClick={clearHistory}>Clear saved history</button></div>
         {showTranscript && <div className="nova-transcript" aria-live="polite"><div><strong>Live transcript</strong><button type="button" onClick={() => setTurns([])}>Clear</button></div>{turns.length === 0 ? <p>Your conversation will appear here after NOVA connects.</p> : turns.map((turn, index) => <article key={`${turn.role}-${index}`} className={turn.role === "You" ? "nova-you" : "nova-agent"}><small>{turn.role} · {turn.at}</small><p>{turn.text}</p></article>)}{partial && <article className="nova-you pending"><small>You are saying</small><p>{partial}</p></article>}</div>}
-        <p className="nova-note">NOVA is an AI assistant. For urgent medical care, use Niramaya and call 5555.</p>
+        <p className="nova-note">NOVA is an AI assistant. For urgent medical care, call 112 directly.</p>
       </aside>
     </section>
   </main>;

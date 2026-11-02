@@ -241,7 +241,7 @@ def _provider_detail(response: httpx.Response) -> str:
 
 async def _vision_json(image: bytes, mime_type: str, language: Language, note: str) -> dict[str, Any]:
     """Send an in-memory JPEG to an OpenAI-compatible endpoint, including Gemini."""
-    prompt = f"""Return JSON only and use {language.value}. Classify this image as wound_photo, medical_report, xray_or_scan_image, prescription, not_medical, or unclear. Do not diagnose, name a disease, prescribe, recommend medicine, cream, antibiotic, or dosage. For a wound, describe only visible colour, edges, swelling, discharge, dirt, and size only if a reference object is visible. Set severity to mild, moderate, severe, or unclear. For an X-ray, CT, or MRI, refuse image interpretation and request the written radiologist report. For unclear images, request a better photo. User note: {note or '(none)'}. JSON keys: kind, image_quality, findings (array), severity, severity_signals (array), plain_explanation, care_type, urgency."""
+    prompt = f"""Return JSON only and use {language.value}. Classify this image as skin_photo, wound_photo, medical_report, xray_or_scan_image, prescription, microscopy_or_lab_image, other_medical_image, not_medical, or unclear. Do not diagnose, name a disease, prescribe, recommend medicine, cream, antibiotic, or dosage. Describe only visible features, without guessing a cause: image type, body area only if clear, colour, shape, boundaries, distribution, image quality, and any legible text. For skin_photo, describe the visible appearance without naming a skin disease; mention that a clinician must assess it. For wound_photo, describe only visible colour, edges, swelling, discharge, dirt, and size only if a reference object is visible. For microscopy_or_lab_image, state the apparent specimen/image type only if clear and describe visible patterns without interpreting them. For an X-ray, CT, or MRI, do not interpret findings; request the written radiologist report. For unclear images, say what is unclear and request a better photo. Set severity to unclear unless a visible, concrete danger signal supports otherwise; never infer urgency from an image alone. User note: {note or '(none)'}. JSON keys: kind, image_quality, findings (array of short observable facts), severity, severity_signals (array), plain_explanation, care_type, urgency."""
     encoded = base64.b64encode(image).decode("ascii")
     if settings.openai_api_key:
         model = settings.openai_vision_model or settings.openai_model
@@ -255,8 +255,8 @@ async def _vision_json(image: bytes, mime_type: str, language: Language, note: s
                     {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded}"}},
                 ]},
             ],
-            "max_tokens": 850,
-            "temperature": 0.1,
+            "max_completion_tokens": 850,
+            "reasoning_effort": "low",
         }
         headers = {"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"}
         endpoint = f"{settings.openai_base.rstrip('/')}/chat/completions"
@@ -273,6 +273,9 @@ async def _vision_json(image: bytes, mime_type: str, language: Language, note: s
                     if attempt < 2:
                         await asyncio.sleep(2 ** attempt)
                         continue
+                    if response.status_code == 429:
+                        detail = _provider_detail(response)
+                        raise HTTPException(status_code=503, detail=f"OpenAI vision rate limit or quota: {detail}")
                     raise HTTPException(status_code=503, detail="Vision service is busy. Please try again in a minute.")
                 if response.status_code >= 400:
                     raise HTTPException(status_code=502, detail=f"Vision provider rejected this request: {_provider_detail(response)}")
@@ -417,7 +420,9 @@ async def analyse_pathovision(
                 else:
                     care_type, urgency = vision.get("care_type"), vision.get("urgency")
                 explanation = str(vision.get("plain_explanation", "Please upload a clearer image in good light, with the whole area in frame."))
-                result = {"kind": kind, "image_quality": str(vision.get("image_quality", "review needed")), "findings": findings, "extracted_text": "", "lab_table": [], "first_aid_steps": WOUND_STEPS if kind == "wound_photo" else [], "when_to_get_help": WOUND_WARNINGS if kind == "wound_photo" else [], "red_flags": vision.get("severity_signals", []), "care_type": care_type, "urgency": urgency, "reasoning": explanation, "plain_explanation": explanation, "disclaimers": [DISCLAIMER], "model": model_used, "model_used": model_used, "ocr_confidence": "not used", "language": language.value}
+                if kind in {"skin_photo", "microscopy_or_lab_image", "other_medical_image"}:
+                    explanation = f"{explanation} This is a visual description only, not a diagnosis; show the image to a qualified clinician."
+                result = {"kind": kind, "image_quality": str(vision.get("image_quality", "review needed")), "findings": findings, "extracted_text": "", "lab_table": [], "first_aid_steps": WOUND_STEPS if kind == "wound_photo" else [], "when_to_get_help": WOUND_WARNINGS if kind == "wound_photo" else [], "red_flags": vision.get("severity_signals", []) if kind == "wound_photo" else [], "care_type": care_type if kind == "wound_photo" else None, "urgency": urgency if kind == "wound_photo" else "review", "reasoning": explanation, "plain_explanation": explanation, "disclaimers": [DISCLAIMER, "AI image descriptions can be wrong. A clinician must interpret medical images."], "model": model_used, "model_used": model_used, "ocr_confidence": "not used", "language": language.value}
     spoken = await _sarvam_audio_reply(str(result["plain_explanation"]), "hi-IN" if language == Language.HI else "en-IN")
     result["audio_base64"] = spoken
     result["audio_mime_type"] = "audio/wav" if spoken else None

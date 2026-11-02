@@ -1,4 +1,4 @@
-"""Emergency demo-dispatch feed. It supplements, never replaces Call 5555."""
+"""Emergency demo-dispatch feed. It supplements, never replaces a direct call to 112."""
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -29,7 +29,7 @@ def get_alerts() -> list[dict[str, object]]:
 
 @router.post("/emergency")
 async def emergency_call(payload: EmergencyCall) -> dict[str, object]:
-    """Record the demo family + ambulance notification beside the tel:5555 action."""
+    """Record the demo family + ambulance notification beside the direct 112 call."""
     family_notification = "Demo notification: family contact and ambulance partner were alerted."
     alert = create_alert({
         "patient_name": payload.patient_name,

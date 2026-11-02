@@ -1,15 +1,17 @@
 """Server-side Sarvam speech bridge; API credentials never reach the browser."""
 
 import httpx
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.api.care import pipeline
+from app.api.intake_features import optional_patient_subject
 from app.api.ws import hub
 from app.config import settings
 from app.core.live import create_alert
 from app.core.loaders import public_caregiver_profiles
-from app.core.voice_agent import conversational_reply, general_reply, language_from_text, resolved_language, route_from_understanding, understand_voice_turn
+from app.core.patient_records import apply_skin_priority, get_patient_record
+from app.core.voice_agent import conversational_reply, general_reply, is_health_concern, language_from_text, resolved_language, route_from_understanding, understand_voice_turn
 from app.schemas.care import CareRequest, CareResponse, ConversationTurn, Language, Location
 
 
@@ -66,7 +68,7 @@ async def speak_reply(payload: dict[str, str]) -> dict[str, str | None]:
 
 
 @router.post("/chat")
-async def chat_with_agent(payload: AgentMessage) -> dict[str, object]:
+async def chat_with_agent(payload: AgentMessage, authorization: str | None = Header(default=None)) -> dict[str, object]:
     """Run typed and spoken conversation through Sarvam, not local response templates."""
     text = payload.text.strip()
     request = CareRequest(
@@ -75,18 +77,20 @@ async def chat_with_agent(payload: AgentMessage) -> dict[str, object]:
         location=Location(lat=payload.lat, lng=payload.lng),
         conversation_history=payload.conversation_history,
     )
-    health_history = " ".join(turn.content for turn in payload.conversation_history if turn.role == "user")
-    health_text = f"{health_history} {text}".lower()
-    health_markers = ("pain", "dard", "ghut", "knee", "fever", "bukhar", "cough", "khansi", "vomit", "rash", "wound", "weak", "dizzy", "breath", "saans")
-    health_turn = any(marker in health_text for marker in health_markers)
-    user_turns = sum(1 for turn in payload.conversation_history if turn.role == "user") + 1
-    provisional = pipeline.run(request, force_final=health_turn and user_turns >= 2)
-    decision = await understand_voice_turn(payload.conversation_history, text)
-    has_care_turn = health_turn or bool(decision and (decision.care_type or decision.follow_up_question or decision.symptom_summary))
-    result = route_from_understanding(provisional, decision, request, payload.language) if has_care_turn else None
+    has_care_turn = is_health_concern(payload.conversation_history, text)
+    decision = await understand_voice_turn(payload.conversation_history, text) if has_care_turn else None
+    subject = optional_patient_subject(authorization)
+    patient_record = get_patient_record(subject) if subject else {"medications": [], "skin_check": None}
+    result = None
+    if has_care_turn:
+        # Keep intake follow-ups active until the patient has supplied the
+        # detail being asked for; turn count alone is not enough to finalize.
+        provisional = pipeline.run(request)
+        result = route_from_understanding(provisional, decision, request, payload.language)
+        result = apply_skin_priority(result, subject)
     language = resolved_language(decision.language, payload.language) if decision else language_from_text(text, payload.language)
     reply = (
-        await conversational_reply(payload.conversation_history, text, result, language)
+        await conversational_reply(payload.conversation_history, text, result, language, patient_record.get("medications", []))
         if result else await general_reply(payload.conversation_history, text, language)
     )
     audio = await _sarvam_audio_reply(reply, "hi-IN" if language == Language.HI else "en-IN")

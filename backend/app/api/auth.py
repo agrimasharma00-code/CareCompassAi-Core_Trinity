@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
@@ -44,6 +45,23 @@ def issue_token(role: str, identifier: str) -> str:
     payload = _part(json.dumps({"sub": identifier, "role": role, "exp": int((datetime.now(UTC) + timedelta(hours=8)).timestamp())}).encode())
     signature = _part(hmac.new(SECRET, f"{header}.{payload}".encode(), hashlib.sha256).digest())
     return f"{header}.{payload}.{signature}"
+
+
+def verify_demo_token(token: str) -> dict[str, object]:
+    """Validate the existing demo HMAC token and return its role/subject claims."""
+    try:
+        header, payload, signature = token.split(".", 2)
+        expected = _part(hmac.new(SECRET, f"{header}.{payload}".encode(), hashlib.sha256).digest())
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError("Invalid signature")
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        if int(claims.get("exp", 0)) <= int(time.time()):
+            raise ValueError("Expired token")
+        if not claims.get("sub") or claims.get("role") not in ROLES:
+            raise ValueError("Invalid claims")
+        return claims
+    except (ValueError, TypeError, json.JSONDecodeError) as error:
+        raise HTTPException(status_code=401, detail="Sign in again to save patient intake information.") from error
 
 
 @router.post("/demo-login")

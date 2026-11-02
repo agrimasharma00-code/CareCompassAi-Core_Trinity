@@ -2,20 +2,24 @@
 
 import asyncio
 import base64
+import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sarvamai import AsyncSarvamAI, RealtimeAudioInput
 
 from app.api.care import pipeline
+from app.api.auth import verify_demo_token
 from app.api.voice import _sarvam_audio_reply
 from app.api.ws import hub
 from app.config import settings
 from app.core.live import create_alert
-from app.core.voice_agent import conversational_reply, general_reply, language_from_text, resolved_language, route_from_understanding, understand_voice_turn
+from app.core.patient_records import apply_skin_priority, get_patient_record
+from app.core.voice_agent import conversational_reply, general_reply, is_health_concern, language_from_text, resolved_language, route_from_understanding, understand_voice_turn
 from app.schemas.care import CareRequest, ConversationTurn, Language, Location
 
 
 router = APIRouter(prefix="/api/v1/voice", tags=["voice"])
+logger = logging.getLogger(__name__)
 
 
 @router.websocket("/realtime")
@@ -27,6 +31,16 @@ async def realtime_voice(socket: WebSocket) -> None:
     transport but has a separate, general-conversation personality.
     """
     await socket.accept()
+    subject = None
+    token = socket.query_params.get("token")
+    if token:
+        try:
+            claims = verify_demo_token(token)
+            if claims.get("role") == "patient": subject = str(claims["sub"])
+        except Exception:
+            await socket.send_json({"type": "error", "message": "Your patient session expired. Sign in again to continue."})
+            await socket.close(code=1008)
+            return
     if not settings.sarvam_api_key:
         await socket.send_json({"type": "error", "message": "Voice is not configured on the server."})
         await socket.close(code=1011)
@@ -88,17 +102,23 @@ async def realtime_voice(socket: WebSocket) -> None:
                             reply_language = language_from_text(transcript, language)
                             spoken_text = await general_reply(history[:-1], transcript, reply_language)
                         else:
-                            request = CareRequest(
-                                user_input=transcript,
-                                language=language,
-                                location=Location(lat=28.545, lng=77.192),
-                                conversation_history=history,
-                            )
-                            provisional = pipeline.run(request)
-                            decision = await understand_voice_turn(history, transcript)
-                            result = route_from_understanding(provisional, decision, request, language)
-                            reply_language = resolved_language(decision.language, language) if decision else language
-                            spoken_text = await conversational_reply(history[:-1], transcript, result, reply_language) if decision else await general_reply(history[:-1], transcript, reply_language)
+                            care_turn = is_health_concern(history[:-1], transcript)
+                            decision = await understand_voice_turn(history[:-1], transcript) if care_turn else None
+                            reply_language = resolved_language(decision.language, language) if decision else language_from_text(transcript, language)
+                            if care_turn:
+                                request = CareRequest(
+                                    user_input=transcript,
+                                    language=language,
+                                    location=Location(lat=28.545, lng=77.192),
+                                    conversation_history=history[:-1],
+                                )
+                                provisional = pipeline.run(request)
+                                result = apply_skin_priority(route_from_understanding(provisional, decision, request, language), subject)
+                                record = get_patient_record(subject) if subject else {"medications": []}
+                                spoken_text = await conversational_reply(history[:-1], transcript, result, reply_language, record.get("medications", []))
+                            else:
+                                result = None
+                                spoken_text = await general_reply(history[:-1], transcript, reply_language)
                         history.append(ConversationTurn(role="assistant", content=spoken_text))
                         audio = await _sarvam_audio_reply(spoken_text, "hi-IN" if reply_language == Language.HI else "en-IN")
                         alert = None
@@ -127,5 +147,12 @@ async def realtime_voice(socket: WebSocket) -> None:
     except WebSocketDisconnect:
         return
     except Exception:
-        await socket.send_json({"type": "error", "message": "The Sarvam voice connection ended unexpectedly."})
-        await socket.close(code=1011)
+        logger.exception("Niramaya real-time speech connection failed")
+        try:
+            await socket.send_json({
+                "type": "error",
+                "message": "Speech recognition stopped. Check the Sarvam key, account access or quota, and internet connection, then reconnect.",
+            })
+            await socket.close(code=1011)
+        except RuntimeError:
+            pass

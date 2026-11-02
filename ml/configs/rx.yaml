@@ -1,0 +1,16 @@
+data_dir: ml/data/rx/raw
+artifact_dir: ml/artifacts/rx
+report_dir: ml/reports/rx
+seed: 42
+input_height: 64
+input_width: 256
+batch_size: 64
+workers: 2
+epochs: 40
+quick_epochs: 3
+learning_rate: 0.001
+fine_tune_learning_rate: 0.0001
+patience: 8
+binarize: false
+confidence_high: 0.70
+confidence_medium: 0.40

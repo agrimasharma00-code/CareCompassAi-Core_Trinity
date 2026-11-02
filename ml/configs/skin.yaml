@@ -1,0 +1,18 @@
+data_dir: ml/data/skin/raw
+split_dir: ml/data/skin/splits
+artifact_dir: ml/artifacts/skin
+report_dir: ml/reports/skin
+seed: 42
+input_size: 224
+batch_size: 32
+workers: 2
+epochs: 25
+quick_epochs: 2
+learning_rate: 0.001
+fine_tune_learning_rate: 0.0001
+patience: 6
+sampler: weighted
+high_risk_confidence: 0.50
+high_risk_sum: 0.40
+uncertain_confidence: 0.40
+classes: [akiec, bcc, bkl, df, mel, nv, vasc]
