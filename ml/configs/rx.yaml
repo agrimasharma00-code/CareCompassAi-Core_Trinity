@@ -1,0 +1,6 @@
+seed: 17
+height: 32
+width: 128
+charset_case_sensitive: true
+beam_width: 10
+max_upload_boxes: 30

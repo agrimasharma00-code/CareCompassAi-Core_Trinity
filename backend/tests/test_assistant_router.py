@@ -113,6 +113,18 @@ def test_typo_health_routes_to_care_and_arithmetic_is_off_topic(monkeypatch):
     assert assistant.chat(request("2+2 kitna hai")).mode == "off_topic"
 
 
+def test_headache_intake_acknowledges_symptom_and_arithmetic_is_redirected(monkeypatch):
+    monkeypatch.setattr(assistant.sarvam_client, "chat_json", lambda *args: None)
+    headache = assistant.chat(request("I have a headache"))
+    assert headache.mode == "followup"
+    assert "headache" in headache.message.lower()
+    assert "sudden" in headache.message.lower() or "severe" in headache.message.lower()
+    arithmetic = assistant.chat(request("What is 2 + 2?"))
+    assert arithmetic.mode == "off_topic"
+    assert "health" in arithmetic.message.lower()
+    assert "4" not in arithmetic.message
+
+
 def test_vague_and_yes_care_requests_ask_for_symptom_chips(monkeypatch):
     monkeypatch.setattr(assistant.sarvam_client, "chat_json", lambda *args: None)
     for text in ("i am not feeling well", "tabiyat theek nahi", "help"):

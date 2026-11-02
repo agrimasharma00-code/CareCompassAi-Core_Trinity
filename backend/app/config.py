@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     sarvam_tts_model: str = "bulbul:v4-flash"
     sarvam_tts_speaker: str = "priya_hi_recovery"
     sarvam_timeout_s: float = 6
+    ml_service_url: str = "http://localhost:8001"
     emergency_threshold: float = 0.25
     followup_threshold: float = 0.5
     max_followups: int = 3

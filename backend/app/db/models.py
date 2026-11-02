@@ -102,4 +102,6 @@ class Conversation(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
     messages: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    skin_check: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    confirmed_medications: Mapped[list[dict]] = mapped_column(JSON, default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)

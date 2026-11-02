@@ -26,3 +26,10 @@ At `/login`, use Demo as Patient, Demo as Dispatch, or choose an active provider
 ## Boundaries
 
 All accounts and roster entries are synthetic. Dispatch is a dashboard simulation, not an ambulance service. Emergency? Call 112 directly. The current dispatch map is a local schematic that avoids disclosing patient coordinates to a third party. The Nexus, CareCall, PathoVision, and CareConnect modules are clearly marked Coming soon. Do not upload real medical reports to this demo.
+
+## Current demo notes
+
+The home page highlights working entry points only: **Get care** and **SereneMind**. The patient assistant includes an explainable urgency meter and named caregiver recommendations. Booking and dispatch remain demo workflows. The **Emergency · Call 112** link calls the real emergency number; in-app dispatch is only a simulation. See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the three-minute walkthrough. PathoVision OCR, synthetic sample PDFs, and the complete five-feature landing page are not implemented yet.
+# Niramaya Vision (research prototype)
+
+The optional skin-image and prescription-reading features use a separate PyTorch service on port 8001. Follow the isolated setup and run instructions in [`ml/README.md`](ml/README.md); set `ML_SERVICE_URL=http://localhost:8001` in `backend/.env`. Vision model artifacts are not included in Git. Missing models keep manual intake available. Outputs are educational suggestions only; a clinician/pharmacist must review them, and medicines are stored only after explicit patient confirmation.

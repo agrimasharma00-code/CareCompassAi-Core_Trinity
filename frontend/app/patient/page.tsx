@@ -5,6 +5,7 @@ import Link from "next/link";
 import { API_BASE_URL } from "../../lib/api";
 import { alertSummary, composerBottomPadding, openAlert } from "../../lib/dispatch-state.mjs";
 import { persistConversation, restoreConversation } from "../../lib/conversation-state.mjs";
+import NiramayaVision from "./NiramayaVision";
 
 type CareResult = {
   follow_up_question: string | null;
@@ -12,7 +13,7 @@ type CareResult = {
   urgency: string | null;
   red_flags: string[];
   reasoning: string;
-  matched_caregivers: { caregiver_id: string; score: number; reason: string }[];
+  matched_caregivers: { caregiver_id: string; score: number; reason: string; name?: string; role_label?: string; qualification?: string; base_area?: string; distance_km?: number | null; travel_estimate_min?: number | null; languages?: string[]; rating?: number; experience_years?: number; available_today?: string; why_ranked?: string }[];
 };
 type AssistantResult = {
   mode: "emergency" | "care" | "followup" | "answer" | "smalltalk" | "app_help" | "off_topic";
@@ -26,12 +27,13 @@ type AssistantResult = {
   why_not?: string | null;
   intake_state?: IntakeState | null;
   understood?: string | null;
+  urgency_score?: { score: number; level: string; band: { min: number; max: number }; factors: { label: string; points: number; detail: string }[]; summary: string } | null;
 };
 type CareContext = { care_type: string; urgency: string; reasoning: string; symptoms: string[] };
 type IntakeState = { symptoms: string[]; symptom_text?: string; requested_service?: string | null; red_flag_answer?: string | null; who: string | null; age_group: "child" | "adult" | "elderly" | null; duration: string | null; preference: "home_visit" | "online_doctor" | null; red_flags_screened: boolean; question_count: number; pending_question: string | null };
 type VoiceLanguage = "hi-IN" | "en-IN";
 type AssistantLanguage = "Hindi" | "Hinglish" | "English";
-type AuthUser = { username: string; name: string; role: "patient" | "dispatch" | "provider"; caregiver_id: string | null };
+type AuthUser = { id: number; username: string; name: string; role: "patient" | "dispatch" | "provider"; caregiver_id: string | null };
 type Booking = { id: number; caregiver_id: string; slot: string; care_type: string; urgency: string; handoff_summary: string; state: string; proposed_slot: string | null };
 type CheckIn = { id: number; booking_id: number; state: string; answer: string | null };
 type Turn = { role: string; content: string; follow_up_question?: string; language?: VoiceLanguage; suggestions?: string[]; spoken_message?: string | null; care_context?: CareContext | null; intake_state?: IntakeState | null; display?: AssistantResult };
@@ -711,6 +713,7 @@ export default function PatientPage() {
       <h1 style={{ fontSize: "clamp(36px, 6vw, 56px)", margin: "10px 0" }}>Let’s find the right care.</h1>
       {authUser && <p role="status" className="pill">Live {liveConnected ? "● connected" : "○ reconnecting"}</p>}
       <p className="muted" style={{ fontSize: 17 }}>Share what support you need. This service routes care and does not diagnose or prescribe.</p>
+      {authUser?.role === "patient" && <NiramayaVision patientId={authUser.id} />}
 
       <section ref={composerRef} className="card patient-composer">
         {locationOpen && <div className="location-popover" role="dialog" aria-label="Location settings">
@@ -799,6 +802,7 @@ export default function PatientPage() {
                 <button type="button" className="speaker-button" aria-label="Read care summary aloud" title="Read care summary aloud" onClick={() => void playSpeech(spokenSummary(result), responseLanguage, true)}>🔊</button>
               </div>
               <p className="muted" style={{ lineHeight: 1.6 }}>{plainReasoning(result.care.reasoning, result.language, result.care.care_type, result.care.urgency)}</p>
+              {result.urgency_score && <section aria-label="Urgency meter" style={{ margin: "18px 0", padding: 16, borderRadius: 12, background: "#f4f8f7" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><strong>Urgency meter · {plainUrgency(result.urgency_score.level, result.language)}</strong><strong>{result.urgency_score.score}/100</strong></div><div role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={result.urgency_score.score} aria-label="Urgency score" style={{ height: 12, marginTop: 10, background: "linear-gradient(90deg,#1e8e5a 0 39%,#b7791f 39% 84%,#b3261e 84% 100%)", borderRadius: 999, position: "relative" }}><span style={{ position: "absolute", left: `${result.urgency_score.score}%`, top: -4, width: 4, height: 20, background: "#10233a", borderRadius: 2 }} /></div><details style={{ marginTop: 10 }}><summary>Why this score</summary><ul>{result.urgency_score.factors.map((factor, index) => <li key={`${factor.label}-${index}`}>{factor.label}: +{factor.points} — {factor.detail}</li>)}</ul></details></section>}
               {result.understood && <p><strong>{result.language === "Hindi" ? "मैंने यह समझा" : result.language === "Hinglish" ? "Maine yeh samjha" : "What I understood"}:</strong> {result.understood}</p>}
               {result.why_not && <details><summary>{result.language === "Hindi" ? "यह विकल्प क्यों?" : result.language === "Hinglish" ? "Yeh option kyun?" : "Why this option?"}</summary><p style={{ whiteSpace: "pre-line", lineHeight: 1.55 }}>{result.why_not}</p></details>}
               {result.safety_net && <p className="pill" style={{ display: "block", whiteSpace: "normal", lineHeight: 1.5, padding: 12 }}>{result.safety_net}</p>}
@@ -809,7 +813,7 @@ export default function PatientPage() {
                 </button>
                 {showCaregivers && <div className="grid" style={{ marginTop: 16 }}>{result.care.matched_caregivers.map((caregiver) => (
                       <div key={caregiver.caregiver_id} style={{ border: "1px solid #e4ece9", borderRadius: 15, padding: 16, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                        <div><strong>{caregiver.caregiver_id}</strong><div className="muted" style={{ fontSize: 14, marginTop: 4 }}>{caregiver.reason}</div></div>
+                        <div><strong style={{ fontSize: 18 }}>{caregiver.name || caregiver.caregiver_id}</strong><div className="muted" style={{ fontSize: 14, marginTop: 4 }}>{caregiver.role_label}{caregiver.qualification ? ` · ${caregiver.qualification}` : ""}</div><div className="muted" style={{ fontSize: 14 }}>{caregiver.base_area}{caregiver.distance_km == null ? "" : ` · ${caregiver.distance_km} km · approx. ${caregiver.travel_estimate_min} min`}</div><div className="muted" style={{ fontSize: 14 }}>{caregiver.languages?.join(" · ")} · {caregiver.rating == null ? "" : `★ ${caregiver.rating} · ${caregiver.experience_years} years`}</div><div className="muted" style={{ fontSize: 14 }}>{caregiver.available_today ? `Available ${caregiver.available_today}` : caregiver.reason}</div>{caregiver.why_ranked && <small>{caregiver.why_ranked}</small>}<small style={{ display: "block", color: "var(--muted)" }}>{caregiver.caregiver_id}</small></div>
                         <div style={{ textAlign: "right" }}><span className="pill">{caregiver.score.toFixed(2)}</span><br /><button type="button" onClick={() => openBooking(caregiver.caregiver_id)} style={{ border: 0, background: "none", color: "var(--teal)", fontWeight: 700, cursor: "pointer", marginTop: 8 }}>Book</button></div>
                         {bookingCaregiver === caregiver.caregiver_id && <div style={{ flexBasis: "100%", display: "grid", gap: 10 }}>
                           {bookingError && <p role="alert" style={{ color: "#a91e2a", margin: 0 }}>{bookingError} {!authUser && <Link href="/login" target="_blank" style={{ color: "inherit", fontWeight: 700 }}>Open demo login</Link>}</p>}

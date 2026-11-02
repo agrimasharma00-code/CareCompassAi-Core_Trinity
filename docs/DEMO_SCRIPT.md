@@ -1,19 +1,23 @@
-# Demo script (3 minutes)
+# CareCompass demo script (3 minutes)
 
-**0:00–0:20 — Start**  
-Open the landing page and explain that CareCompass routes people to services; it does not diagnose or prescribe.
+This script follows the working demo paths. Care navigation, bookings, and dispatch are synthetic simulations; the app does not contact providers or emergency services.
 
-**0:20–1:10 — Patient intake**  
-Open Patient assistant. Enter a mild concern such as a headache. Show the red-flag question first, answer No, then answer the missing age and duration prompts. Point out the understood summary, care reasoning, collapsed alternatives, safety net, and plain-language service card.
+## 0:00–0:25 — Start at home
 
-**1:10–1:45 — Booking**  
-Open the caregiver list from the care result, choose an available slot, and request it. Open `/provider` in a separate session using the selected caregiver's demo login and accept the request. Return to the patient screen to show the updated status.
+Open CareCompass. Point out **Get care**, **SereneMind**, **My bookings**, and **Emergency · Call 112**. Explain that this demo routes care requests and does not diagnose or prescribe.
 
-**1:45–2:20 — Dispatch safety boundary**  
-Use the emergency demo path only with synthetic data. Show that Call 112 is prominent and the separate dispatch action is explicitly a demo. In `/dispatch`, advance the alert status and show the patient timeline. State that this does not contact emergency services.
+## 0:25–1:20 — Guided care and recommendations
 
-**2:20–2:45 — Wellbeing**  
-Open `/serenemind`, demonstrate the local-only mood check-in, and show the persistent 112 / Tele-MANAS 14416 footer. Do not enter personal information during a public demo.
+Click **Get care**. Enter a non-emergency concern such as “headache since yesterday,” answer the guided questions, and show the care decision, urgency score, and “Why this score” factors. Expand recommended caregivers to show names, qualifications, area, and approximate travel information when available.
 
-**2:45–3:00 — Metrics and roadmap**  
-Open `/metrics` for grouped synthetic-data metrics. Point out the Coming soon labels for Nexus, CareCall, PathoVision, and CareConnect.
+## 1:20–2:15 — Booking handoff
+
+Choose a caregiver and continue through the slot and booking request flow. Use the demo patient login if prompted. In a second browser session, sign in as the matching provider, open **Provider**, and confirm the request. Return to the patient session and show the confirmed booking only after that provider action.
+
+## 2:15–3:00 — Safety and dispatch
+
+Show **Emergency · Call 112** and keep the real emergency action first. The dispatch request is labelled Demo and does not replace 112. In a second session, sign in as Demo Dispatch and move a demo alert through its available states. Finish by showing the live status and reiterating that synthetic dispatch is not an ambulance service.
+
+## Optional module notes
+
+PathoVision, the five-stage document processing flow, synthetic sample PDFs, and report interpretation are not implemented. Do not upload real reports. SereneMind is a supportive demo check-in, not therapy or diagnosis. CareCall voice calling is not available.

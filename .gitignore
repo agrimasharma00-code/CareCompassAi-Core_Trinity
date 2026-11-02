@@ -13,3 +13,12 @@ __pycache__/
 venv/
 models/*.joblib
 backend/models/*.joblib
+ml/data/
+ml/artifacts/
+ml_service/.venv/
+*.pt
+*.pth
+*.onnx
+*.lmdb
+*.ipynb_checkpoints/
+kaggle.json

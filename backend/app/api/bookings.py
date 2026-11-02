@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import require_role
 from app.core.loaders import load_caregivers
 from app.db.database import get_db
-from app.db.models import Booking, CheckIn, Event, User, utc_now
+from app.db.models import Booking, CheckIn, Conversation, Event, User, utc_now
 from app.realtime import manager
 
 router = APIRouter(prefix="/api/v1/bookings", tags=["bookings"])
@@ -154,14 +154,34 @@ def create_booking(
     if not caregiver or provider is None:
         raise HTTPException(status_code=404, detail="This active demo caregiver account is unavailable")
     slot = _validate_slot(caregiver, request.slot)
+    urgency = triage.urgency
+    handoff_summary = _handoff(triage, context, request.history)
+    conversation = session.scalar(select(Conversation).where(Conversation.user_id == patient.id))
+    skin_check = conversation.skin_check if conversation else None
+    if skin_check:
+        prediction = skin_check.get("top_prediction") or {}
+        label = prediction.get("name", "possible high-risk skin lesion")
+        confidence = prediction.get("confidence")
+        if skin_check.get("triage_effect") == "raise_priority":
+            # Booking supports scheduled/same-day care; never let an optional image
+            # downgrade priority, and cap this non-emergency booking at same-day.
+            if urgency == "scheduled":
+                urgency = "same_day"
+            percent = f" ({round(float(confidence) * 100)}%)" if isinstance(confidence, (int, float)) else ""
+            handoff_summary += f"\nSkin image flagged as possible high-risk lesion: {label}{percent}. Priority raised one level for clinician review."
+        else:
+            handoff_summary += f"\nPatient skin-check result: {label}. AI-assisted result; clinician review required."
+    if conversation and conversation.confirmed_medications:
+        entries = [f"{item.get('name','')}{' (' + item['composition'] + ')' if item.get('composition') else ''} [{item.get('source','confirmed')}]" for item in conversation.confirmed_medications]
+        handoff_summary += "\nPatient-confirmed medicines: " + "; ".join(entries) + "."
     booking = Booking(
         patient_id=patient.id,
         provider_id=provider.id,
         caregiver_id=request.caregiver_id,
         slot=slot,
         care_type=triage.care_type,
-        urgency=triage.urgency,
-        handoff_summary=_handoff(triage, context, request.history),
+        urgency=urgency,
+        handoff_summary=handoff_summary,
         patient_latitude=request.patient_latitude,
         patient_longitude=request.patient_longitude,
         state="requested",

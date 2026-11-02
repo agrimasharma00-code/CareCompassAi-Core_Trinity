@@ -1,0 +1,3 @@
+Model: custom
+Parameters: 1,207,015
+Input: 3x224x224

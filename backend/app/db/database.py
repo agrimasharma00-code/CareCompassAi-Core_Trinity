@@ -97,6 +97,11 @@ def initialize_database(*, target_engine: Engine = engine, demo_password: str | 
             alert_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(alerts)"))}
             if "language" not in alert_columns:
                 connection.execute(text("ALTER TABLE alerts ADD COLUMN language VARCHAR(16) DEFAULT 'English'"))
+            conversation_columns = {row[1] for row in connection.execute(text("PRAGMA table_info(conversations)"))}
+            if "skin_check" not in conversation_columns:
+                connection.execute(text("ALTER TABLE conversations ADD COLUMN skin_check JSON"))
+            if "confirmed_medications" not in conversation_columns:
+                connection.execute(text("ALTER TABLE conversations ADD COLUMN confirmed_medications JSON DEFAULT '[]'"))
     password = get_settings().demo_password if demo_password is None else demo_password
     if not password:
         return 0

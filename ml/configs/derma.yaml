@@ -1,0 +1,6 @@
+seed: 17
+image_size: 224
+classes: [akiec, bcc, bkl, df, mel, nv, vasc]
+split: [0.70, 0.15, 0.15]
+sampler: weighted
+high_risk: [akiec, bcc, mel]

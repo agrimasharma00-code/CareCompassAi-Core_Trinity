@@ -59,6 +59,7 @@ class AssistantResponse(BaseModel):
     why_not: str | None = None
     intake_state: IntakeState | None = None
     understood: str | None = None
+    urgency_score: dict | None = None
 
 
 class IntentClassification(BaseModel):
@@ -393,7 +394,33 @@ def _next_guided_question(state: IntakeState, language: str, *, vague: bool = Fa
         return None
     state.pending_question = key
     state.question_count += 1
+    if key == "red_flag":
+        return _red_flag_question(state, language)
     return GUIDED_ANSWERS[language][key]
+
+
+def _red_flag_question(state: IntakeState, language: str) -> tuple[str, list[str]]:
+    symptom = next(iter(state.symptoms), "reported concern")
+    label = answer_agent.SYMPTOM_LABELS.get(symptom, {}).get(language, symptom)
+    if symptom == "headache":
+        questions = {
+            "English": f"You mentioned a headache. I’ll help you find the right next step. Is it sudden and severe, or happening with weakness, trouble speaking, chest pain, breathing difficulty, fainting, or confusion?",
+            "Hindi": f"आपने {label} बताया। मैं अगला सही कदम ढूँढने में मदद करूँगी। क्या यह अचानक बहुत तेज़ है, या इसके साथ कमज़ोरी, बोलने में दिक्कत, सीने में दर्द, सांस लेने में तकलीफ़, बेहोशी या भ्रम है?",
+            "Hinglish": f"Aapne {label} bataya. Main agla sahi step dhoondhne mein madad karungi. Kya dard achanak bahut tez hai, ya saath mein weakness, bolne mein dikkat, seene mein dard, saans ki dikkat, behoshi ya confusion hai?",
+        }
+    elif symptom == "fever" and (state.age_group == "child" or re.search(r"infant|baby|newborn|शिशु|नवजात", state.who or "", re.I)):
+        questions = {
+            "English": f"You mentioned {label} in an infant. Before I guide you, is the fever high, or is the baby unusually drowsy, difficult to wake, or unable to keep fluids down?",
+            "Hindi": f"आपने शिशु को {label} बताया। आगे बताने से पहले: क्या बुखार तेज़ है, बच्चा बहुत सुस्त है, जगाना मुश्किल है, या तरल नहीं रख पा रहा?",
+            "Hinglish": f"Aapne shishu ko {label} bataya. Aage batane se pehle: kya bukhar tez hai, bachcha bahut sust hai, jagana mushkil hai, ya fluids nahi rakh paa raha?",
+        }
+    else:
+        questions = {
+            "English": f"You mentioned {label}. I’ll help find the next care step. First, are you having chest pain, difficulty breathing, fainting, severe bleeding, a seizure, sudden weakness, or confusion?",
+            "Hindi": f"क्या सीने में दर्द, सांस लेने में तकलीफ़, बेहोशी, बहुत खून बहना, दौरा, अचानक कमज़ोरी या भ्रम है? आपने {label} बताया—मैं अगला देखभाल कदम ढूँढने में मदद करूँगी।",
+            "Hinglish": f"Aapne {label} bataya. Main agla care step dhoondhne mein madad karungi. Pehle batayein: kya seene mein dard, saans ki dikkat, behoshi, zyada bleeding, daura, achanak weakness ya confusion hai?",
+        }
+    return questions[language], GUIDED_ANSWERS[language]["red_flag"][1]
 
 
 def _intake_summary(state: IntakeState, language: str) -> str:
@@ -582,12 +609,14 @@ def chat(request: AssistantRequest):
         updated_context = _care_context(care, symptoms) or context
         message = _emergency_message(language)
         spoken = answer_agent.spoken_text(message, language, "emergency", updated_context.model_dump() if updated_context else None)
-        return AssistantResponse(mode="emergency", message=message, spoken_message=spoken, care=care, language=language, suggestions=_suggestions("emergency", language), care_context=updated_context, intake_state=intake_state)
+        from app.core.urgency_score import compute_urgency_score
+        return AssistantResponse(mode="emergency", message=message, spoken_message=spoken, care=care, language=language, suggestions=_suggestions("emergency", language), care_context=updated_context, intake_state=intake_state, urgency_score=compute_urgency_score(intake_state, care))
 
     if screen_yes:
         care = {"follow_up_question": None, "care_type": "emergency_112", "urgency": "emergency", "red_flags": ["red_flag_screen_confirmed"], "reasoning": "The user confirmed a red-flag symptom during safety screening.", "matched_caregivers": []}
         message = _emergency_message(language)
-        return AssistantResponse(mode="emergency", message=message, spoken_message=message, care=care, language=language, suggestions=[], care_context=context, intake_state=intake_state)
+        from app.core.urgency_score import compute_urgency_score
+        return AssistantResponse(mode="emergency", message=message, spoken_message=message, care=care, language=language, suggestions=[], care_context=context, intake_state=intake_state, urgency_score=compute_urgency_score(intake_state, care))
 
     if re.search(BOOKING_STATUS, routing_message, re.I):
         message, suggestions = _booking_status_message(request.booking_context, language)
@@ -700,5 +729,9 @@ def chat(request: AssistantRequest):
         from app.core.reasoning import safety_net, why_not
         safety = safety_net(language, care.get("care_type"))
         alternatives = why_not(care.get("care_type"), language, symptoms)
+        from app.core.recommend import recommend
+        care["matched_caregivers"] = recommend(care.get("care_type"), intake_state, request.location, language, top_k=5)
     understood = _intake_summary(intake_state, language) if mode == "care" else None
-    return AssistantResponse(mode=mode, message=message, spoken_message=spoken_message, care=care, language=language, suggestions=_suggestions(mode, language), care_context=updated_context, safety_net=safety, why_not=alternatives, intake_state=intake_state, understood=understood)
+    from app.core.urgency_score import compute_urgency_score
+    score = compute_urgency_score(intake_state, care) if mode in {"care", "emergency"} and care and care.get("urgency") else None
+    return AssistantResponse(mode=mode, message=message, spoken_message=spoken_message, care=care, language=language, suggestions=_suggestions(mode, language), care_context=updated_context, safety_net=safety, why_not=alternatives, intake_state=intake_state, understood=understood, urgency_score=score)

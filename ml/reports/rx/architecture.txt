@@ -1,0 +1,5 @@
+CRNN CNN + 2-layer bidirectional LSTM + CTC
+Parameters: 3,213,916
+Input: 1x32x128
+Time steps: 32
+Charset entries including blank: 28

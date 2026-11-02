@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.api import bookings
-from app.db.models import Base, Booking, CheckIn, User
+from app.db.models import Base, Booking, CheckIn, Conversation, User
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -52,6 +52,21 @@ def test_booking_builds_fact_based_handoff_and_checkin(monkeypatch):
     assert "Symptoms: fever; care service: paramedic_home_visit" in result["handoff_summary"]
     assert "Red flags: none identified by triage" in result["handoff_summary"]
     assert session.scalar(select(CheckIn).where(CheckIn.booking_id == result["id"])) is not None
+    engine.dispose()
+
+
+def test_confirmed_vision_context_raises_scheduled_priority_and_appears_in_provider_handoff(monkeypatch):
+    engine, session, patient, _other, _provider = setup_db()
+    monkeypatch.setattr(bookings, "load_caregivers", lambda: [{"caregiver_id": "CG_001", "active": "True", "free_from": "09:00", "free_until": "17:00"}])
+    session.add(Conversation(user_id=patient.id, messages=[], skin_check={"top_prediction": {"name": "Melanoma", "confidence": 0.81}, "triage_effect": "raise_priority"}, confirmed_medications=[{"name": "Medicine A", "composition": "compound", "source": "ai_corrected"}]))
+    session.commit()
+    request = booking_request((datetime.now(IST) + timedelta(days=1)).replace(hour=14, minute=0, second=0, microsecond=0))
+    request.triage.urgency = "scheduled"; request.care_context.urgency = "scheduled"
+    result = bookings.create_booking(request, patient, session)
+    assert result["urgency"] == "same_day"
+    assert "Priority raised one level" in result["handoff_summary"]
+    assert "Melanoma (81%)" in result["handoff_summary"]
+    assert "Patient-confirmed medicines: Medicine A (compound) [ai_corrected]" in result["handoff_summary"]
     engine.dispose()
 
 

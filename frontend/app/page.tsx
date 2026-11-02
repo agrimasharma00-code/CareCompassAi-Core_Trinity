@@ -1,5 +1,41 @@
-"use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-const modules = [["✳", "CareAgent Nexus", "/nexus", "Request orchestration"], ["◉", "CareCall 5555", "/carecall", "In-app voice shortcut"], ["☼", "SereneMind AI", "/serenemind", "Private wellbeing check-in"], ["⌕", "PathoVision Lite", "/pathovision", "Synthetic report demo"], ["↗", "CareConnect 360", "/connect", "Demo provider network"]];
-export default function HomePage() { const [loggedIn, setLoggedIn] = useState(false); const [large, setLarge] = useState(false); useEffect(() => { try { setLoggedIn(Boolean(localStorage.getItem("carecompass_token"))); } catch { setLoggedIn(false); } }, []); return <main style={large ? { fontSize: "1.18em" } : undefined}><header className="container" style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "20px 0", alignItems: "center", flexWrap: "wrap" }}><Link href="/" aria-label="CareCompass home" style={{ color: "inherit", textDecoration: "none", fontFamily: "Manrope", fontSize: 21, fontWeight: 800 }}>✳ CareCompass <span style={{ color: "var(--teal)" }}>AI</span></Link><nav aria-label="Main navigation" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><Link href="/patient">Patient assistant</Link><Link href={loggedIn ? "/patient" : "/login"}>{loggedIn ? "My account" : "Log in"}</Link><button className="pill" onClick={() => setLarge((value) => !value)} aria-pressed={large} aria-label="Toggle large text">A+</button></nav></header><section className="container" style={{ padding: "60px 0 74px", textAlign: "center" }}><span className="eyebrow">A clearer path to care</span><h1 style={{ fontSize: "clamp(42px,7vw,76px)", lineHeight: 1.03, maxWidth: 850, margin: "22px auto" }}>How can CareCompass help you today?</h1><p className="muted" style={{ fontSize: 19, maxWidth: 620, margin: "0 auto 30px" }}>Tell us what kind of support you need. We’ll help route you to a care service.</p><Link className="button" href="/patient" style={{ display: "inline-block", textDecoration: "none", padding: "15px 28px" }}>Find care →</Link><p className="muted" style={{ fontSize: 13, marginTop: 17 }}>Care routing only · Not diagnosis or prescription · Emergency? Call 112.</p></section><section className="container" style={{ paddingBottom: 72 }}><span className="eyebrow">One connected care journey</span><h2 style={{ fontSize: 32, margin: "8px 0 18px" }}>Explore CareCompass</h2><div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(min(200px,100%),1fr))" }}>{modules.map(([icon,title,path,desc],i)=><Link key={title} href={path} className="card" style={{ display:"block", color:"inherit", textDecoration:"none", padding:22, minHeight:176 }} aria-label={`Open ${title}`}><div style={{ fontSize:24, color:"var(--teal)" }} aria-hidden="true">{icon}</div><h3 style={{ margin:"18px 0 7px", fontSize:18 }}>{title}</h3><p className="muted" style={{ margin:0, fontSize:14 }}>{desc}</p><span className="pill" style={{ marginTop:17 }}>{i===2?"Available now":"Coming soon"}</span></Link>)}</div></section><footer className="container muted" style={{ padding:"22px 0", borderTop:"1px solid #e2eae8", fontSize:13 }}>Built for access to care · For emergencies call 112.</footer></main> }
+import styles from "./home-visuals.module.css";
+
+const portals = [
+  { icon: "✳", title: "Get care", eyebrow: "Care navigation", description: "Describe a health concern and get a clear next step in English, Hindi, or Hinglish.", href: "/patient", action: "Start intake" },
+  { icon: "☼", title: "SereneMind", eyebrow: "Wellbeing support", description: "Take a private, supportive wellbeing check-in. This is not diagnosis or therapy.", href: "/serenemind", action: "Open SereneMind" },
+  { icon: "✚", title: "Provider workspace", eyebrow: "Care coordination", description: "Review and respond to demo booking requests in the provider dashboard.", href: "/login", action: "Provider login" },
+  { icon: "➜", title: "Dispatch workspace", eyebrow: "Demo response", description: "Review demo alerts and update dispatch status. This is not an ambulance service.", href: "/login", action: "Dispatch login" },
+];
+
+export default function HomePage() {
+  return <main>
+    <header className="container" style={{ display: "flex", justifyContent: "space-between", padding: "24px 0", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <Link href="/" aria-label="CareCompass home" style={{ color: "inherit", textDecoration: "none", fontFamily: "Manrope", fontSize: 22, fontWeight: 800 }}>✳ CareCompass</Link>
+      <nav aria-label="Main navigation" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <Link href="/patient">Get care</Link><Link href="/login">Log in</Link>
+        <a href="tel:112" className="button emergency-button" style={{ minHeight: 44, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>Emergency · Call 112</a>
+      </nav>
+    </header>
+    <section className={`container ${styles.hero}`}>
+      <div className={styles.copy}>
+        <span className="eyebrow">One connected care journey</span>
+        <h1>Find the right next step for care.</h1>
+        <p className="muted">CareCompass helps you describe a concern, understand the care options, and connect with a demo provider workflow.</p>
+        <div className={styles.heartbeat} aria-label="Care navigation available"><span aria-hidden="true">♥</span><i aria-hidden="true" /><b>Care navigation, in your language</b></div>
+      </div>
+      <div className={styles.doctorArt} aria-hidden="true"><div className={styles.artGlow} /><img src="/illustrations/carecompass-care-team.png" alt="" /></div>
+    </section>
+    <section className="container" style={{ paddingBottom: 72 }}>
+      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(min(245px,100%),1fr))" }}>
+        {portals.map((portal) => <article className="card" key={portal.title} style={{ padding: 24, minHeight: 260, display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: 27, color: "var(--teal)" }} aria-hidden="true">{portal.icon}</div>
+          <span className="eyebrow" style={{ marginTop: 18 }}>{portal.eyebrow}</span><h2 style={{ margin: "7px 0", fontSize: 24 }}>{portal.title}</h2>
+          <p className="muted" style={{ lineHeight: 1.55, marginTop: 4 }}>{portal.description}</p>
+          <Link href={portal.href} className="button" style={{ minHeight: 44, display: "inline-flex", alignItems: "center", textDecoration: "none", marginTop: "auto", alignSelf: "start" }}>{portal.action} →</Link>
+        </article>)}
+      </div>
+    </section>
+    <footer className="container muted" style={{ padding: "22px 0", borderTop: "1px solid #e2eae8", fontSize: 13 }}>Care guidance only · Not diagnosis or prescription · For emergencies call 112.</footer>
+  </main>;
+}
