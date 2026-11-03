@@ -19,7 +19,7 @@ python -m ml.skin.data --download
 python -m ml.rx.data --download
 ```
 
-Without Kaggle credentials, each command prints the manual download URL and expected target folder (`ml/data/skin/raw/` or `ml/data/rx/raw/`) and exits cleanly. Unzip downloads there. No credential file should be committed.
+Without Kaggle credentials, each command prints the manual download URL and expected target folder (`ml/data/ham10000/` or `ml/data/rx_bd/`) and exits cleanly. Unzip downloads there. No credential file should be committed.
 
 ## Train, evaluate, export
 
@@ -46,3 +46,24 @@ python -m uvicorn ml_service.main:app --host 127.0.0.1 --port 8001 --reload
 The Niramaya API proxies optional uploads to `ML_SERVICE_URL` (default `http://127.0.0.1:8001`). If a model is absent, information and Rx segmentation remain available; prediction endpoints return a clear `model_missing` response and the intake UI offers manual entry/continuation.
 
 The skin classifier uses dermatoscopic HAM10000 images and is not a diagnostic device. Rx predictions are only candidate medicine names; users must confirm/correct each one and a pharmacist should verify the prescription. The Rx pipeline does not read dosage or instructions.
+
+## RxRead CRNN/CTC training
+
+The open-vocabulary RxRead model uses a CNN + bidirectional LSTM + CTC recognizer, separate from the existing closed-set RxCNN baseline:
+
+```powershell
+python -m ml.rx.train_ctc --stage pretrain   # optional IAM word pretraining
+python -m ml.rx.train_ctc --stage finetune   # BD prescription words
+python -m ml.rx.train_ctc --stage bd_only    # BD baseline from scratch
+python -m ml.rx.export_ctc
+python -m ml.rx.evaluate_ctc
+```
+
+HAM10000 belongs in `ml/data/ham10000/`, IAM words in `ml/data/iam/`, the prescription dataset in `ml/data/rx_bd/`, and the A-Z medicine CSV in `ml/data/lexicon/`. Training reports clearly when data is missing. Model artifacts are gitignored. Code alone is not a trained model: the app returns `model_missing` until real training and export finish.
+
+DermaScan is scoped to dermatoscopic HAM10000-like images and does not generalize to every medical image. RxRead suggests candidate transcriptions and lexicon matches; a person must verify each name and a pharmacist should check the prescription. Neither feature is a diagnosis or prescription, and RxRead does not read dosage instructions.
+
+## Inspired by
+
+- DermaScan's educational project idea: [Pranaykarvi/derma-ai](https://github.com/Pranaykarvi/derma-ai). This repository contains an independent PyTorch implementation.
+- RxRead's CRNN/CTC architecture idea: [githubharald/SimpleHTR](https://github.com/githubharald/SimpleHTR). This repository contains an independent PyTorch implementation.

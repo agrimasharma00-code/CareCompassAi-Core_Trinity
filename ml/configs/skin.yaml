@@ -1,5 +1,5 @@
-data_dir: ml/data/skin/raw
-split_dir: ml/data/skin/splits
+data_dir: ml/data/ham10000
+split_dir: ml/data/ham10000/splits
 artifact_dir: ml/artifacts/skin
 report_dir: ml/reports/skin
 seed: 42

@@ -22,7 +22,7 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 def download_dataset(target: Path) -> bool:
     kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
     if not kaggle_json.exists() and not (os.getenv("KAGGLE_USERNAME") and os.getenv("KAGGLE_KEY")):
-        print("No Kaggle credentials found. Download the Doctor's Handwritten Prescription BD dataset, unzip it under ml/data/rx/raw/, then rerun training.")
+        print("No Kaggle credentials found. Download the Doctor's Handwritten Prescription BD dataset, unzip it under ml/data/rx_bd/, then rerun training.")
         print(f"Kaggle: https://www.kaggle.com/datasets/{KAGGLE_SLUG}")
         print("Alternative: https://data.mendeley.com/datasets/zjjtptvn6f. Expected: image folders and a CSV/XLSX with image and MEDICINE_NAME labels.")
         return False
@@ -141,7 +141,7 @@ def dataset_summary(splits: dict[str, pd.DataFrame]) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(); parser.add_argument("--download", action="store_true"); parser.add_argument("--data-dir", default="ml/data/rx/raw")
+    parser = argparse.ArgumentParser(); parser.add_argument("--download", action="store_true"); parser.add_argument("--data-dir", default="ml/data/rx_bd")
     args = parser.parse_args(); target = Path(args.data_dir)
     if args.download: download_dataset(target); return
     print(dataset_summary(make_splits(load_rows(target))))

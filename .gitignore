@@ -15,6 +15,7 @@ backend/models/*.joblib
 frontend/next-dev*.log
 backend/data/carecompass_demo.sqlite3
 backend/carecompass.db
+backend/data/niramaya_demo.sqlite3
 backend/eval/predictions.csv
 ml/data/
 ml/artifacts/

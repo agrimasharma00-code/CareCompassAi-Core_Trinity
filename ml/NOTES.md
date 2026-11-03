@@ -7,7 +7,7 @@
 - **Persistence:** SQLAlchemy models exist for users, bookings, alerts, check-ins, events, and conversations in `backend/app/db/models.py`. There was no patient intake record or medication list. The demo patient flow also issues a stateless signed token. The new additive `PatientIntakeRecord` stores records by that token's patient subject; raw prescription and skin images are never saved.
 - **Configuration and startup:** Backend settings read `backend/.env` through Pydantic Settings (`backend/app/config.py`). Frontend reads `frontend/.env.local`; start it with `npm run dev` in `frontend`. Start the API with `python -m uvicorn app.main:app --reload` in `backend`. Existing backend dependencies are in `backend/requirements.txt`; frontend dependencies are in `frontend/package.json` and `package-lock.json`.
 - **Existing tests:** `backend/tests/` contains pytest coverage; frontend has no configured test runner. Existing tests were not run before these changes in this session.
-- **Existing ML:** `backend/ml/augment.py` and `backend/ml/train_triage.py` are the synthetic text triage training pipeline. There was no `ml_service/`; the new image training code and inference service are isolated from backend dependencies.
+- **Existing ML:** `backend/ml/augment.py` and `backend/ml/train_triage.py` are the synthetic text triage training pipeline. `ml/` and `ml_service/` already contained separate image training and inference modules; this task extends them without adding PyTorch to the patient API dependencies.
 
 ## Assumptions and decisions
 
@@ -22,7 +22,12 @@
 ## Known limitations
 
 - HAM10000 contains dermatoscopic images, has limited skin-tone diversity, and covers pigmented lesions; it does not cover rashes, burns, or wounds. Phone photos have a substantial domain shift.
-- The Rx model recognizes only the 78 labels in the dataset and sees isolated word crops, not full prescriptions or dosage instructions. Manual correction is required, and a pharmacist should verify every medicine.
+- The existing RxCNN recognizes only its dataset labels. RxRead's new CRNN can transcribe character sequences after real training, but it only processes isolated word crops and does not read full prescriptions or dosage instructions. Manual correction and pharmacist review remain necessary.
 - Automatic Rx word segmentation is heuristic. The patient UI lets users remove proposed crops or add crops with image coordinates.
 - Neither CNN is a diagnostic or prescribing device. Synthetic runs are engineering smoke checks only.
-- This checkout has no `.git` directory or git remote, so branch creation and commits from the pasted prompts are unavailable in this folder copy.
+
+- The pasted vision prompt's `ham10000`, `iam`, `rx_bd`, and `lexicon` folders are supported dataset locations. No Kaggle credentials or datasets were available during implementation, so no real model training or clinical validation was performed.
+- RxRead CRNN training is separate from the existing 78-class RxCNN baseline. IAM pretraining is optional; BD-only training is available after BD images and labels are supplied. The existing shared inference API was kept instead of duplicating task routers.
+
+- The existing RxCNN recognizes only labels in its training set. The new CRNN can transcribe character sequences after training, but reads isolated word crops only, not full prescriptions or dosage instructions. Manual correction and pharmacist review remain necessary.
+- No trained weights or real-data metrics are included in this checkout. Image prediction remains unavailable until the corresponding dataset is trained and artifacts are exported into the ignored model folders.

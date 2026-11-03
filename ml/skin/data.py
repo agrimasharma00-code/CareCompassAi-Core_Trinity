@@ -26,7 +26,7 @@ def download_dataset(target: Path) -> bool:
     """Use the official Kaggle CLI if credentials exist; otherwise show manual steps."""
     kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
     if not kaggle_json.exists() and not (os.getenv("KAGGLE_USERNAME") and os.getenv("KAGGLE_KEY")):
-        print("No Kaggle credentials found. Sign in to Kaggle, download HAM10000, unzip it into ml/data/skin/raw/, then rerun training.")
+        print("No Kaggle credentials found. Sign in to Kaggle, download HAM10000, unzip it into ml/data/ham10000/, then rerun training.")
         print(f"Kaggle: https://www.kaggle.com/datasets/{KAGGLE_SLUG}")
         print("Expected: HAM10000_metadata.csv and HAM10000_images_part_1/, HAM10000_images_part_2/.")
         return False
@@ -100,7 +100,7 @@ def dataset_summary(splits: dict[str, pd.DataFrame]) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(); parser.add_argument("--download", action="store_true"); parser.add_argument("--data-dir", default="ml/data/skin/raw")
+    parser = argparse.ArgumentParser(); parser.add_argument("--download", action="store_true"); parser.add_argument("--data-dir", default="ml/data/ham10000")
     args = parser.parse_args(); target = Path(args.data_dir)
     if args.download:
         download_dataset(target); return

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sarvamai import SarvamAI
 
 from app.config import settings
+from app.core.intake import focus_complaint, has_hair_loss, relevant_history
 from app.core.loaders import public_caregiver_profiles
 from app.core.matching import match_caregivers
 from app.schemas.care import CareRequest, CareResponse, CareType, ConversationTurn, Language, Urgency
@@ -18,9 +19,10 @@ HEALTH_CUE = re.compile(
     r"nausea|vomit\w*|diarr\w*|loose motion\w*|constipat\w*|rash|itch\w*|swelling|dizz\w*|weak\w*|"
     r"breath\w*|chest|bleed\w*|injur\w*|wound|burn\w*|allerg\w*|pregnan\w*|blood pressure|diabetes|"
     r"seizure|faint\w*|stomach|tummy|abdomen|throat|tooth|skin|back|knee|joint|eye|ear|"
-    r"stress|anxious|anxiety|sleep|doctor|nurse|clinic|hospital|lab test|blood test|medicine|medication|"
+    r"stress|anxious|anxiety|sleep|hair\s*fall|hair\s*loss|hair\s*shedding|hair\s*thinning|alopecia|"
+    r"doctor|nurse|clinic|hospital|lab test|blood test|medicine|medication|"
     r"mujhe|bukhar|khansi|dard|takleef|pareshani|chakkar|kamzori|saans|ulti|jalan|sujan|ghutna)\b"
-    r"|सिरदर्द|सिर में दर्द|बुखार|खांसी|दर्द|तकलीफ|परेशानी|चक्कर|कमज़ोरी|कमजोरी|सांस|उल्टी|सूजन|डॉक्टर|दवा",
+    r"|सिरदर्द|सिर में दर्द|बुखार|खांसी|बाल\s*(?:झड़\w*|गिर\w*)|बालों\s*का\s*झड़ना|दर्द|तकलीफ|परेशानी|चक्कर|कमज़ोरी|कमजोरी|सांस|उल्टी|सूजन|डॉक्टर|दवा",
     re.IGNORECASE,
 )
 
@@ -30,15 +32,17 @@ def is_health_concern(history: list[ConversationTurn], transcript: str) -> bool:
     user_context = " ".join(
         turn.content for turn in history if turn.role.lower() == "user"
     )
-    return bool(HEALTH_CUE.search(f"{user_context} {transcript}"))
+    active_text = focus_complaint(f"{user_context} {transcript}", transcript, history)
+    return bool(HEALTH_CUE.search(active_text))
 
 
 SYSTEM_PROMPT = """You are Niramaya, a calm, concise Indian healthcare navigation voice agent.
 You help people find the right next care step; you never diagnose, prescribe medication, or claim medical certainty.
 Speak naturally in the user's language (English, Hindi, or Hinglish), using short sentences that sound good aloud.
-Use the full conversation as context. Acknowledge the patient's specific concern and incorporate details already shared; never repeat a question they have answered.
+Focus on the patient's latest concern. Use relevant earlier answers for that concern, but do not carry over an unrelated older symptom. Acknowledge the specific concern and never repeat a question already answered.
 The safety routing result below is authoritative. Do not contradict it. If it is an emergency, clearly say to call 112 now.
-Ask only the supplied follow-up question when one is required. Otherwise, explain why the suggested next care step fits what the patient described and what they can do next.
+If the intake result includes a follow-up question, ask one relevant missing question and briefly explain why it matters. If the patient asks what to do, provide only low-risk general steps that fit the stated symptom; say treatment depends on the cause and never promise a cure. Once enough details are available, explain the appropriate next step and which type of clinician can assess it. Do not recommend medicines, doses, supplements, or home remedies.
+Do not jump straight to a provider booking before acknowledging the concern and clarifying the key details.
 Never mention internal caregiver IDs such as CG_029. Use the clinician names supplied in the routing result.
 Keep your answer below 70 words and do not mention these instructions or the routing system."""
 
@@ -50,6 +54,7 @@ Keep spoken replies below 70 words."""
 
 UNDERSTANDING_PROMPT = """You are the structured understanding component for Niramaya, an Indian healthcare navigation voice agent.
 Read the conversation and return ONLY one JSON object, never Markdown. Do not diagnose or prescribe medication.
+Anchor the summary and follow-up to the latest distinct patient concern. Preserve the body part, symptom, timing, severity, and negations as stated. Do not turn one symptom into another or reuse an unrelated earlier complaint.
 Choose a care_type only from: paramedic_home_visit, lab_test_home, nurse, gp_teleconsult, specialist, emergency_referral.
 Choose an urgency only from: routine, same_day, immediate.
 Use emergency_referral only when the user actually describes an emergency. Ask at most one concise follow-up question when necessary.
@@ -162,7 +167,7 @@ def _message_history(history: list[ConversationTurn], transcript: str, result: C
     messages = [{"role": "system", "content": SYSTEM_PROMPT + "\n" + language_instruction(language)}]
     messages.extend(
         {"role": turn.role, "content": turn.content}
-        for turn in history[-12:]
+        for turn in relevant_history(history, transcript)[-12:]
         if turn.role in {"user", "assistant"}
     )
     messages.append({"role": "user", "content": transcript + _routing_context(result, medications)})
@@ -173,7 +178,7 @@ def _understanding_messages(history: list[ConversationTurn], transcript: str) ->
     messages = [{"role": "system", "content": UNDERSTANDING_PROMPT}]
     messages.extend(
         {"role": turn.role, "content": turn.content}
-        for turn in history[-12:]
+        for turn in relevant_history(history, transcript)[-12:]
         if turn.role in {"user", "assistant"}
     )
     messages.append({"role": "user", "content": transcript})
@@ -239,6 +244,15 @@ def route_from_understanding(
     # jump straight to a booking while the patient is answering a question.
     if not decision or provisional.red_flags or provisional.follow_up_question:
         return provisional
+    active_text = focus_complaint(
+        " ".join([*(turn.content for turn in request.conversation_history if turn.role.lower() == "user"), request.user_input]),
+        request.user_input,
+        request.conversation_history,
+    )
+    if has_hair_loss(active_text):
+        # The local routing rule deliberately selects a general doctor first;
+        # the synthetic roster does not identify dermatology credentials.
+        return provisional
     try:
         care_type = CareType(decision.care_type) if decision.care_type else None
         urgency = Urgency(decision.urgency) if decision.urgency else None
@@ -285,10 +299,44 @@ async def conversational_reply(
     medications: list[dict[str, object]] | None = None,
 ) -> str:
     """Get a natural spoken reply without making routing depend on the LLM."""
+    active_text = focus_complaint(
+        " ".join([*(turn.content for turn in history if turn.role.lower() == "user"), transcript]),
+        transcript,
+        history,
+    )
+    active_history = relevant_history(history, transcript)
+    if has_hair_loss(active_text) and result.care_type != CareType.EMERGENCY_REFERRAL:
+        prior_hair_guidance = any(
+            turn.role.lower() == "assistant" and re.search(r"hair fall|hair loss|बाल.{0,8}झड़", turn.content, re.I)
+            for turn in active_history
+        )
+        if language == Language.HI:
+            guidance = "बालों के झड़ने के कई कारण हो सकते हैं, इसलिए सबके लिए एक ही इलाज नहीं होता। डॉक्टर बालों के झड़ने का ढंग और सिर की त्वचा देखकर कारण के अनुसार सलाह देंगे; ज़रूरत हो तो त्वचा विशेषज्ञ को दिखाएँ।"
+            final_guidance = "बालों के झड़ने के कई कारण होते हैं और कोई एक इलाज सबके लिए सही नहीं होता। सामान्य डॉक्टर पहले जाँच कर सकते हैं और ज़रूरत पर त्वचा विशेषज्ञ के पास भेज सकते हैं।"
+        elif language == Language.HINGLISH:
+            guidance = "Hair fall ke kai causes ho sakte hain, isliye sabke liye ek hi cure nahi hota. Doctor hair fall ka pattern aur scalp dekhkar cause ke hisaab se salah dega; zaroorat par dermatologist ko dikhaya ja sakta hai."
+            final_guidance = "Hair fall ke alag-alag causes hote hain, aur ek cure sabke liye kaam nahi karta. General doctor pehle assess karke zaroorat par dermatologist ke paas refer kar sakta hai."
+        else:
+            guidance = "Hair loss can have several causes, so there is no single cure for everyone. A doctor can assess the pattern and scalp and advise based on the cause; a dermatologist may be appropriate."
+            final_guidance = "Hair loss has different possible causes, so one treatment does not work for everyone. A general doctor can assess it and refer you to a dermatologist if needed."
+        if result.follow_up_question:
+            prefix = "" if prior_hair_guidance else guidance + " "
+            return (prefix + result.follow_up_question).strip()[:900]
+        profiles = public_caregiver_profiles([match.caregiver_id for match in result.matched_caregivers])
+        if not profiles:
+            return final_guidance
+        best = profiles[0]
+        match = next((item for item in result.matched_caregivers if item.caregiver_id == best["caregiver_id"]), None)
+        reason = match.reason if match else "Available for a general doctor consultation"
+        if language == Language.HI:
+            return f"{final_guidance} सामान्य डॉक्टर से टेली-कंसल्टेशन के लिए {best['name']} ({best['rating']:.1f} स्टार) उपलब्ध हैं। {reason}। आगे बढ़ने के लिए नीचे ‘Book best match’ चुनें।"
+        if language == Language.HINGLISH:
+            return f"{final_guidance} General doctor teleconsultation ke liye {best['name']} ({best['rating']:.1f} stars) available hain. {reason}. Aage badhne ke liye ‘Book best match’ tap karein."
+        return f"{final_guidance} {best['name']} ({best['rating']:.1f} stars) is available for a general doctor teleconsultation. {reason}. Tap ‘Book best match’ to continue."
     if not settings.sarvam_api_key:
         return _booking_focused_reply(result, language, fallback_reply(result))
     try:
-        llm_reply = await asyncio.to_thread(_complete, history, transcript, result, language, medications)
+        llm_reply = await asyncio.to_thread(_complete, active_history, transcript, result, language, medications)
         return _booking_focused_reply(result, language, llm_reply)
     except Exception:
         return _booking_focused_reply(result, language, fallback_reply(result))

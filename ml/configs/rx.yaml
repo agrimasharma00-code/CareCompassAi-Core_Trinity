@@ -1,4 +1,4 @@
-data_dir: ml/data/rx/raw
+data_dir: ml/data/rx_bd
 artifact_dir: ml/artifacts/rx
 report_dir: ml/reports/rx
 seed: 42

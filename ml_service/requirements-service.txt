@@ -7,3 +7,4 @@ numpy>=1.26,<3
 Pillow>=10,<13
 opencv-python-headless>=4.9,<5
 PyYAML>=6,<7
+rapidfuzz>=3.9,<4

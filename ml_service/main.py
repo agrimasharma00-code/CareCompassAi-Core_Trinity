@@ -17,6 +17,11 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from torchvision import transforms
 
 from ml.rx.models import load_model as load_rx_model
+from ml.rx.model import CRNN as RxCRNN
+from ml.rx.charset import load_charset
+from ml.rx.decode import best_path, lexicon_correct
+from ml.rx.transforms import preprocess_word
+from ml.skin.data import CLASS_NAMES
 from ml.rx.segment import propose_boxes
 from ml.skin.models import load_model as load_skin_model
 from ml.common.gradcam import overlay_png
@@ -29,6 +34,7 @@ app = FastAPI(title="Niramaya ML Inference", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=os.getenv("FRONTEND_ORIGIN", "http://localhost:3000,http://127.0.0.1:3000").split(","), allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["*"])
 _cache: dict[str, tuple[torch.nn.Module, dict[str, Any]]] = {}
 SKIN_NAMES = {"akiec":"Actinic keratoses / intraepithelial carcinoma", "bcc":"Basal cell carcinoma", "bkl":"Benign keratosis-like lesion", "df":"Dermatofibroma", "mel":"Melanoma", "nv":"Melanocytic nevus", "vasc":"Vascular lesion"}
+CONDITION_CARDS = json.loads((ROOT / "ml" / "skin" / "conditions.json").read_text(encoding="utf-8"))
 
 
 def _artifact(task: str):
@@ -39,6 +45,7 @@ def _artifact(task: str):
     if task not in _cache:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         if task == "skin": model = load_skin_model(meta.get("model_type", "custom"), int(meta["num_classes"]))
+        elif meta.get("model_type") == "crnn_ctc": model = RxCRNN(int(meta["num_characters"]), int(meta.get("input_height", 32)), int(meta.get("input_width", 128)))
         else: model = load_rx_model(meta.get("model_type", "custom"), int(meta["num_classes"]))
         checkpoint = torch.load(weights, map_location="cpu", weights_only=False)
         model.load_state_dict(checkpoint.get("model_state", checkpoint.get("state_dict", checkpoint)))
@@ -85,18 +92,47 @@ def _cam(model, tensor, class_index, task, meta):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "skin_model": (_artifact("skin") is not None), "rx_model": (_artifact("rx") is not None)}
+    models = {}
+    for name in ("skin", "rx"):
+        try:
+            models[name] = "loaded" if _artifact(name) is not None else "missing"
+        except Exception:
+            models[name] = "error"
+    return {"status": "ok", "models": {"derma": models["skin"], "rx": models["rx"]}, "skin_model": models["skin"] == "loaded", "rx_model": models["rx"] == "loaded"}
+
+
+@app.get("/derma/info")
+@app.get("/skin/info")
+def derma_info():
+    try:
+        loaded = _artifact("skin")
+    except Exception:
+        loaded = None
+    meta = loaded[1] if loaded else {}
+    return {
+        "status": "ok" if loaded else "model_missing",
+        "classes": [{"code": code, "name": CONDITION_CARDS.get(code, {}).get("name", CLASS_NAMES.get(code, code))} for code in meta.get("class_codes", meta.get("class_names", list(CLASS_NAMES)))],
+        "model_type": meta.get("model_type"),
+        "metrics": meta.get("metrics"),
+        "condition_cards": CONDITION_CARDS,
+        "disclaimer": "Educational screening aid for HAM10000-like dermatoscopic images only. It is not a diagnosis and is not validated for every skin or medical image.",
+    }
 
 
 @app.get("/rx/info")
 def rx_info():
-    model = _artifact("rx")
+    try: model = _artifact("rx")
+    except Exception: model = None
     path = ARTIFACTS / "rx" / "medicines.json"
     medicines = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    return {"status": "ok" if model else "model_missing", "count": len(medicines), "medicines": medicines}
+    lexicon_path = ARTIFACTS / "rx" / "lexicon.json"
+    lexicon = json.loads(lexicon_path.read_text(encoding="utf-8")) if lexicon_path.exists() else []
+    meta = model[1] if model else {}
+    return {"status": "ok" if model else "model_missing", "model_type": meta.get("model_type"), "metrics": meta.get("metrics"), "count": len(medicines), "lexicon_size": len(lexicon) or len(medicines), "medicines": medicines, "disclaimer": "Medicine names are unverified candidates. Confirm each name with a pharmacist; this model does not read dose or instructions."}
 
 
 @app.post("/skin/predict")
+@app.post("/derma/predict")
 async def skin_predict(image: UploadFile = File(...)):
     loaded = _artifact("skin")
     if not loaded: return {"status": "model_missing", "message": "No trained skin model is installed. You can continue with symptom-based care guidance."}
@@ -115,9 +151,12 @@ async def skin_predict(image: UploadFile = File(...)):
     if any(p["code"] in high_codes for p in top[:1]) and max_conf >= float(thresholds.get("high_risk_confidence", .5)) or high_sum >= float(thresholds.get("high_risk_sum", .4)):
         risk, effect = "needs_clinician_review", "raise_priority"
     elif max_conf < float(thresholds.get("uncertain_confidence", .4)):
-        risk, effect = "uncertain", "none"
-    else: risk, effect = "lower_risk_pattern", "none"
-    return {"status": "ok", "risk": risk, "triage_effect": effect, "top_prediction": top[0], "top_predictions": top, "high_risk_probability": high_sum, "gradcam_png_base64": _cam(model, tensor, int(indexes[0]), "skin", meta), "disclaimer": "This image model is not a diagnosis. A clinician should assess concerning, changing, bleeding, or non-healing lesions."}
+        risk, effect = "uncertain", "retake_photo"
+    else: risk, effect = "lower_risk_pattern", "no_change"
+    card = CONDITION_CARDS.get(top[0]["code"], {})
+    message = "Please arrange clinician review soon." if effect == "raise_priority" else "The image is unclear; retake it in even light and seek clinical review if concerned." if effect == "retake_photo" else "This pattern does not rule out disease; continue normal care and consult a clinician if it changes or worries you."
+    disclaimer = "Information only, not medical advice or a diagnosis. HAM10000 covers dermatoscopic lesion classes; it cannot classify every skin or medical image."
+    return {"status": "ok", "risk": risk, "risk_level": risk, "triage_effect": effect, "top_prediction": top[0], "top_predictions": top, "top3": top, "high_risk_probability": high_sum, "condition_card": card, "message": message, "gradcam_png_base64": _cam(model, tensor, int(indexes[0]), "skin", meta), "model_version": meta.get("training_date", "unknown"), "disclaimer": disclaimer}
 
 
 @app.post("/rx/segment")
@@ -151,6 +190,22 @@ async def rx_predict(image: UploadFile | None = File(default=None), crops: list[
     medicines = json.loads(medicines_path.read_text(encoding="utf-8")) if medicines_path.exists() else {}
     results = []
     for crop in sources:
+        if meta.get("model_type") == "crnn_ctc":
+            charset_path = ARTIFACTS / "rx" / "charset.json"
+            lexicon_path = ARTIFACTS / "rx" / "lexicon.json"
+            if not charset_path.is_file(): raise HTTPException(503, "RxRead character set is missing from the exported model.")
+            charset = load_charset(charset_path)
+            lexicon = json.loads(lexicon_path.read_text(encoding="utf-8")) if lexicon_path.is_file() else []
+            tensor = preprocess_word(crop, int(meta.get("input_height", 32)), int(meta.get("input_width", 128)), float(meta.get("mean", 0.5)), float(meta.get("std", 0.25))).unsqueeze(0)
+            with torch.no_grad(): log_probs = model(tensor)[:, 0]
+            raw_text, ctc_confidence = best_path(log_probs, charset)
+            candidates = lexicon_correct(raw_text, lexicon, k=3)
+            top = []
+            for candidate in candidates:
+                final_score = ctc_confidence * (float(candidate["score"]) / 100.0)
+                top.append({"brand": candidate["name"], "generic": candidate.get("composition", ""), "confidence": ctc_confidence, "lexicon_score": candidate["score"], "final_score": final_score})
+            results.append({"raw_text": raw_text, "top_predictions": top, "confidence": ctc_confidence, "needs_manual_entry": not candidates or float(candidates[0]["score"]) < 70, "gradcam_png_base64": None})
+            continue
         # preprocess_word provides the exact train-time grayscale/threshold/pad convention.
         word = ImageOps.autocontrast(crop.convert("L"))
         if meta.get("binarize"): word = word.point(lambda value: 255 if value > 160 else 0)

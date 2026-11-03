@@ -64,8 +64,9 @@ async def realtime_voice(socket: WebSocket) -> None:
                 if is_nova
                 else (
                     "Niramaya healthcare access routing in English, Hindi, and Hinglish. Common terms include "
-                    "headache, leg pain, knee pain, calf pain, back pain, fever, cough, swelling, injury, "
-                    "breathing difficulty, and ambulance. Preserve the body part the speaker says; do not "
+                    "headache, leg pain, knee pain, calf pain, back pain, hair fall, hair loss, bal jhadna, "
+                    "fever, cough, swelling, injury, breathing difficulty, and ambulance. Preserve the "
+                    "symptom and body part the speaker says; do not "
                     "change leg pain into headache or infer a symptom they did not say."
                 )
             ),
