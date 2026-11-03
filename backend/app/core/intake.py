@@ -104,6 +104,7 @@ def next_follow_up(
     history: list[ConversationTurn],
     confidence: float,
     force_final: bool = False,
+    current_text: str | None = None,
 ) -> str | None:
     """Return one focused, non-repeated intake question, up to three turns.
 
@@ -119,24 +120,50 @@ def next_follow_up(
     prior_questions = sum(1 for turn in history if turn.role.lower() == "assistant" and "?" in turn.content)
     if prior_questions >= 3:
         return None
-    lower = text.lower()
+    # A new, explicit complaint in the latest turn becomes the focus. Without
+    # this, an old symptom elsewhere in the chat (for example a previous
+    # headache) can hijack follow-ups for a new complaint such as leg pain.
+    current = (current_text or "").strip()
+    focus = current if _has_specific_complaint(current) else ""
+    if not focus:
+        for turn in reversed(history):
+            if turn.role.lower() == "user" and _has_specific_complaint(turn.content):
+                focus = f"{turn.content} {current}".strip()
+                break
+    lower = (focus or text).lower()
     headache = any(term in lower for term in ("headache", "head ache", "head pain", "sir dard", "sar dard", "sar mein dard"))
     symptom = headache or any(term in lower for term in (
         "fever", "bukhar", "cough", "khansi", "pain", "dard", "vomit", "vomiting", "diarr", "rash", "weak", "dizzy",
     ))
     if not symptom:
         return None
+    leg_pain = bool(re.search(
+        r"\b(?:leg|legs|thigh|calf|shin|ankle|foot|feet|knee|knees)\b.{0,35}\b(?:pain|ache|hurt|hurting|sore|swollen|swelling)\b"
+        r"|\b(?:pain|ache|hurt|hurting|sore|swollen|swelling)\b.{0,35}\b(?:leg|legs|thigh|calf|shin|ankle|foot|feet|knee|knees)\b",
+        lower,
+    ))
 
     # The sequence deliberately starts with the information patients expect us
     # to ask for. The final safety screen only appears after the red-flag check.
     candidates: list[tuple[str, dict[str, str]]] = []
-    if facts.duration is None:
+    if leg_pain:
+        has_leg_detail = bool(re.search(
+            r"\b(?:left|right|both|thigh|calf|shin|ankle|foot|knee|swelling|swollen|redness|red|warm|hot|numb|tingl|injur|fall|\d\s*/\s*10)\b",
+            lower,
+        ))
+        if not has_leg_detail:
+            candidates.append(("leg_pain_detail", {
+                "en": "I hear you have leg pain. Where exactly is it, when did it start, and how severe is it from 0 to 10? Any swelling, redness, warmth, numbness, or recent injury?",
+                "hi": "आपने पैर में दर्द बताया। दर्द ठीक कहाँ है, कब शुरू हुआ और 0 से 10 में कितना तेज़ है? क्या सूजन, लालिमा, गर्माहट, सुन्नपन या हाल की चोट है?",
+                "hinglish": "Aapne leg pain bataya. Dard exactly kahan hai, kab shuru hua, aur 0 se 10 mein kitna hai? Kya swelling, redness, warmth, numbness ya recent injury hai?",
+            }))
+    elif facts.duration is None:
         candidates.append(("duration", {
             "en": "When did this start? Did it begin suddenly or gradually?",
             "hi": "यह कब शुरू हुआ? अचानक हुआ या धीरे-धीरे?",
             "hinglish": "Yeh kab shuru hua? Achanak hua ya dheere-dheere?",
         }))
-    if headache:
+    elif headache:
         has_headache_detail = bool(re.search(r"\b(left|right|front|back|one.side|both.sides|throbbing|pressure|pounding|[0-9]{1,2}\s*/\s*10)\b", lower))
         if not has_headache_detail:
             candidates.append(("headache_detail", {
@@ -166,9 +193,21 @@ def next_follow_up(
         }))
 
     candidates.append(("red_flag", {
-        "en": "Any sudden worst-ever symptom, trouble speaking or seeing, weakness, fainting, stiff neck, repeated vomiting, breathing trouble, chest pain, recent head injury, or pregnancy?",
-        "hi": "क्या अचानक बहुत तेज लक्षण, बोलने/देखने में दिक्कत, कमजोरी, बेहोशी, गर्दन अकड़ना, बार-बार उल्टी, सांस की तकलीफ, सीने में दर्द, हाल की सिर की चोट या गर्भावस्था है?",
-        "hinglish": "Kya achanak sabse tez symptom, bolne/dekhne mein dikkat, weakness, behoshi, stiff neck, repeated vomiting, saans ki dikkat, chest pain, recent head injury ya pregnancy hai?",
+        "en": (
+            "Is the leg suddenly very painful or markedly swollen, or do you have chest pain, trouble breathing, fainting, or a recent serious injury?"
+            if leg_pain else
+            "Any sudden worst-ever symptom, trouble speaking or seeing, weakness, fainting, stiff neck, repeated vomiting, breathing trouble, chest pain, recent head injury, or pregnancy?"
+        ),
+        "hi": (
+            "क्या पैर में अचानक बहुत तेज दर्द या बहुत अधिक सूजन है, या सीने में दर्द, सांस लेने में दिक्कत, बेहोशी या हाल की गंभीर चोट है?"
+            if leg_pain else
+            "क्या अचानक बहुत तेज लक्षण, बोलने/देखने में दिक्कत, कमजोरी, बेहोशी, गर्दन अकड़ना, बार-बार उल्टी, सांस की तकलीफ, सीने में दर्द, हाल की सिर की चोट या गर्भावस्था है?"
+        ),
+        "hinglish": (
+            "Kya leg mein achanak bahut tez dard ya zyada swelling hai, ya chest pain, saans ki dikkat, behoshi, ya recent serious injury hui hai?"
+            if leg_pain else
+            "Kya achanak sabse tez symptom, bolne/dekhne mein dikkat, weakness, behoshi, stiff neck, repeated vomiting, saans ki dikkat, chest pain, recent head injury ya pregnancy hai?"
+        ),
     }))
     for _, templates in candidates:
         question = templates[facts.language]
@@ -176,3 +215,14 @@ def next_follow_up(
         if normalized not in prior_text:
             return question
     return None
+
+
+def _has_specific_complaint(text: str) -> bool:
+    """Whether a turn names a symptom specifically enough to reset the focus."""
+    return bool(re.search(
+        r"\b(?:headache|head ache|migraine|fever|bukhar|cough|khansi|cold|stomach pain|tummy pain|"
+        r"rash|pain|ache|hurt|hurting|sore|injury|injured|bleeding|vomit|vomiting|diarrhea)\b"
+        r"|सिरदर्द|सिर में दर्द|बुखार|खांसी|पेट दर्द|पैर दर्द|टांग दर्द|दर्द|चोट",
+        text,
+        re.IGNORECASE,
+    ))

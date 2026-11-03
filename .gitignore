@@ -14,6 +14,7 @@ backend/models/*.joblib
 *.tsbuildinfo
 frontend/next-dev*.log
 backend/data/carecompass_demo.sqlite3
+backend/carecompass.db
 backend/eval/predictions.csv
 ml/data/
 ml/artifacts/

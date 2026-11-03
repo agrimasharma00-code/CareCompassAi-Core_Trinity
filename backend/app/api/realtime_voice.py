@@ -62,7 +62,12 @@ async def realtime_voice(socket: WebSocket) -> None:
             prompt=(
                 "NOVA multilingual virtual phone assistant. It can discuss ordinary topics in English, Hindi, or Hinglish."
                 if is_nova
-                else "Niramaya healthcare access routing; terms include fever, cough, breathing difficulty, ambulance."
+                else (
+                    "Niramaya healthcare access routing in English, Hindi, and Hinglish. Common terms include "
+                    "headache, leg pain, knee pain, calf pain, back pain, fever, cough, swelling, injury, "
+                    "breathing difficulty, and ambulance. Preserve the body part the speaker says; do not "
+                    "change leg pain into headache or infer a symptom they did not say."
+                )
             ),
         ) as stream:
             greeting = (

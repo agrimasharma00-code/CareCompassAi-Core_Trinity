@@ -29,7 +29,14 @@ class CarePipeline:
                 handoff_summary=handoff_summary(facts, Urgency.IMMEDIATE.value, red_flags),
             )
         triage = self.triage.predict(full_text)
-        question = next_follow_up(facts, full_text, request.conversation_history, triage.confidence, force_final)
+        question = next_follow_up(
+            facts,
+            full_text,
+            request.conversation_history,
+            triage.confidence,
+            force_final,
+            current_text=request.user_input,
+        )
         if question:
             return CareResponse(follow_up_question=question, reasoning="One brief detail will help route this request safely.", safety_netting=safety_netting([], None), why_not="A care option is not selected yet because one detail is still needed.", handoff_summary=handoff_summary(facts, None, []))
         lower_text = full_text.lower()
